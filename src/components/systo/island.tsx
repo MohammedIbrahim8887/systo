@@ -67,7 +67,7 @@ function ringDetail(metric: Metric, data: IslandData) {
     case "disk":
       return `${formatBytes(Math.max(0, data.storage.total - data.storage.used), 0)} free`;
     case "network":
-      return `${compactRate(t.netIn + t.netOut)}/s`;
+      return `↓ ${compactRate(t.netIn)}/s · ↑ ${compactRate(t.netOut)}/s`;
   }
 }
 
@@ -94,7 +94,7 @@ function totalLabel(data: IslandData) {
     case "disk":
       return `${compactRate(t.diskRead + t.diskWrite)}/s`;
     case "network":
-      return `${compactRate(t.netIn + t.netOut)}/s`;
+      return `↓ ${compactRate(t.netIn)}/s · ↑ ${compactRate(t.netOut)}/s`;
   }
 }
 
@@ -198,7 +198,12 @@ export function Island({ params = {} }: { params?: IslandParams }) {
             ) : (
               <ActiveIcon className="size-3 text-white/50" strokeWidth={2} />
             )}
-            {data ? totalLabel(data) : "–"}
+            {data && metric === "network" ? (
+              <span className="flex flex-col text-[9px] leading-[12px]">
+                <span>↓ {compactRate(data.totals.netIn)}/s</span>
+                <span>↑ {compactRate(data.totals.netOut)}/s</span>
+              </span>
+            ) : data ? totalLabel(data) : "–"}
           </div>
         </div>
 
@@ -234,18 +239,23 @@ export function Island({ params = {} }: { params?: IslandParams }) {
                   type="button"
                   role="tab"
                   aria-selected={selected}
-                  aria-label={`${METRIC_META[id].label} ${Math.round(value)}%`}
+                  aria-label={id === "network" ? (data ? `Network: download ${formatRate(data.totals.netIn)}, upload ${formatRate(data.totals.netOut)}` : "Network: sampling") : `${METRIC_META[id].label} ${Math.round(value)}%`}
                   onClick={() => chooseMetric(id)}
                   className={cn(
                     "flex flex-col items-center gap-1 rounded-2xl py-2 transition-colors",
                     selected ? "bg-white/[0.1] text-white" : "text-white/75 hover:bg-white/[0.05] hover:text-white",
                   )}
                 >
-                  <Ring value={data ? value : 0} size={46} stroke={4}>
+                  {id === "network" ? (
+                    <div className="flex h-[46px] w-full flex-col justify-center gap-1 text-[11px] font-semibold tabular">
+                      <span title="Download">↓ {data ? formatRate(data.totals.netIn) : "–"}</span>
+                      <span title="Upload" className="text-white/65">↑ {data ? formatRate(data.totals.netOut) : "–"}</span>
+                    </div>
+                  ) : <Ring value={data ? value : 0} size={46} stroke={4}>
                     <span className="text-[11.5px] font-semibold tabular text-white">{data ? `${Math.round(value)}%` : "–"}</span>
-                  </Ring>
+                  </Ring>}
                   <span className={cn("text-[10px] font-semibold tracking-[0.08em]", selected ? "text-white" : "text-white/55")}>{RING_LABEL[id]}</span>
-                  <span className="max-w-full truncate px-1 text-[9.5px] tabular text-white/40">{data ? ringDetail(id, data) : "\u00a0"}</span>
+                  <span className="max-w-full truncate px-1 text-[9.5px] tabular text-white/40">{id === "network" ? "↓ Down · ↑ Up" : data ? ringDetail(id, data) : "\u00a0"}</span>
                 </button>
               );
             })}
