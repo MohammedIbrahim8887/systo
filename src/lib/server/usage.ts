@@ -281,6 +281,9 @@ class UsageStore {
 
     const systemSeries = system.map(normalize);
     const systemTotal = normalizeTotal(rawSystemTotal);
+    // App footprints count shared memory more than once, so their sum can exceed what's in use.
+    const allApps = normalizeTotal([...totals.values()].reduce((a, b) => a + b, 0));
+    const shareBase = metric === "memory" ? Math.max(systemTotal, allApps) : systemTotal;
     const entries: UsageEntry[] = top.map(([id, total]) => {
       const m = metaById.get(id);
       const live = this.meta.get(id);
@@ -293,7 +296,7 @@ class UsageStore {
         bundlePath: m?.bundle_path ?? live?.bundlePath ?? undefined,
         hasIcon: m ? m.has_icon === 1 : Boolean(live?.hasIcon),
         total: value,
-        share: systemTotal > 0 ? Math.min(1, value / systemTotal) : 0,
+        share: shareBase > 0 ? Math.min(1, value / shareBase) : 0,
         series: series.get(id)!.map(normalize),
         lastSeen: live ? to : (m?.last_seen ?? to),
       };

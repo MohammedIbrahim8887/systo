@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { ActivityIcon, ListTreeIcon, SettingsIcon, type LucideIcon } from "lucide-react";
+import { ActivityIcon, HistoryIcon, ListTreeIcon, SettingsIcon, type LucideIcon } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Kbd } from "@/components/ui/kbd";
@@ -12,12 +12,15 @@ import type { Snapshot } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ActionsProvider } from "./actions";
 import { AreaChart } from "./chart";
+import { HistoryView } from "./history-view";
 import { Logo } from "./logo";
 import { PerformanceView } from "./performance-view";
 import { ProcessesView } from "./processes-view";
 import { SettingsDialog } from "./settings-dialog";
 
-type View = "processes" | "performance";
+type View = "processes" | "performance" | "history";
+
+const SHORTCUTS: Record<string, View> = { "1": "processes", "2": "performance", "3": "history" };
 
 function NavItem({
   icon: Icon,
@@ -83,8 +86,7 @@ function Shell() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!event.metaKey) return;
-      if (event.key === "1") setView("processes");
-      else if (event.key === "2") setView("performance");
+      if (SHORTCUTS[event.key]) setView(SHORTCUTS[event.key]);
       else if (event.key === ",") {
         event.preventDefault();
         setSettingsOpen(true);
@@ -109,6 +111,7 @@ function Shell() {
           <nav className="space-y-0.5 px-2">
             <NavItem icon={ListTreeIcon} label="Processes" active={view === "processes"} onClick={() => setView("processes")} shortcut="⌘1" />
             <NavItem icon={ActivityIcon} label="Performance" active={view === "performance"} onClick={() => setView("performance")} shortcut="⌘2" />
+            <NavItem icon={HistoryIcon} label="History" active={view === "history"} onClick={() => setView("history")} shortcut="⌘3" />
           </nav>
 
           <div className="mt-auto space-y-3 px-4 pb-3">
@@ -126,7 +129,9 @@ function Shell() {
           </div>
         </aside>
         <main className="min-w-0 flex-1">
-          {view === "processes" ? <ProcessesView snapshot={snapshot} /> : <PerformanceView snapshot={snapshot} />}
+          {view === "processes" && <ProcessesView snapshot={snapshot} />}
+          {view === "performance" && <PerformanceView snapshot={snapshot} />}
+          {view === "history" && <HistoryView />}
         </main>
       </div>
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
