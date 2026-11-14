@@ -42,15 +42,22 @@ export interface DiskScanResult {
   denied: number;
 }
 
-export function createDiskScanner(ffi: {
-  dlopen: (path: string, symbols: Record<string, unknown>) => { symbols: Record<string, (...args: any[]) => any> };
-  ptr: (view: ArrayBufferView) => number;
-}) {
-  const lib = ffi.dlopen("/usr/lib/libSystem.B.dylib", {
-    open: { args: ["ptr", "i32"], returns: "i32" },
-    close: { args: ["i32"], returns: "i32" },
-    getattrlistbulk: { args: ["i32", "ptr", "ptr", "usize", "u64"], returns: "i32" },
-  }).symbols;
+export function createDiskScanner(
+  ffi: null | {
+    dlopen: (path: string, symbols: Record<string, unknown>) => { symbols: Record<string, (...args: any[]) => any> };
+    ptr: (view: ArrayBufferView) => number;
+  },
+  /** node:fs, passed in because this function is serialized into workers. */
+  fs: Pick<typeof import("node:fs"), "readdirSync" | "lstatSync">,
+) {
+  const lib =
+    process.platform === "darwin" && ffi
+      ? ffi.dlopen("/usr/lib/libSystem.B.dylib", {
+          open: { args: ["ptr", "i32"], returns: "i32" },
+          close: { args: ["i32"], returns: "i32" },
+          getattrlistbulk: { args: ["i32", "ptr", "ptr", "usize", "u64"], returns: "i32" },
+        }).symbols
+      : null;
 
   const ATTR_CMN_NAME = 0x1;
   const ATTR_CMN_DEVID = 0x2;
@@ -71,12 +78,12 @@ export function createDiskScanner(ffi: {
   attrList.setUint16(0, 5, true);
   attrList.setUint32(4, (ATTR_CMN_RETURNED_ATTRS | ATTR_CMN_NAME | ATTR_CMN_DEVID | ATTR_CMN_OBJTYPE | ATTR_CMN_FILEID | ATTR_CMN_ERROR) >>> 0, true);
   attrList.setUint32(16, ATTR_FILE_LINKCOUNT | ATTR_FILE_ALLOCSIZE, true);
-  const attrPtr = ffi.ptr(attrList);
+  const attrPtr = ffi ? ffi.ptr(attrList) : 0;
 
   const BUF_SIZE = 256 * 1024;
   const buf = new Uint8Array(BUF_SIZE);
   const view = new DataView(buf.buffer);
-  const bufPtr = ffi.ptr(buf);
+  const bufPtr = ffi ? ffi.ptr(buf) : 0;
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
@@ -98,6 +105,7 @@ export function createDiskScanner(ffi: {
   };
 
   const TOP_FILES = 150;
+  const trimSlash = (p: string) => (p.endsWith("/") ? p.slice(0, -1) : p);
 
   return function scan(request: DiskScanRequest, onProgress: (p: { files: number; dirs: number; bytes: number; current: string }) => void): DiskScanResult {
     const categories: Record<string, { size: number; count: number }> = {};
@@ -110,36 +118,16 @@ export function createDiskScanner(ffi: {
     let denied = 0;
     let lastEmit = 0;
 
-    const prune = (children: DiskNode[]): DiskNode[] => {
-      children.sort((a, b) => b.s - a.s);
-      const kept: DiskNode[] = [];
-      let restSize = 0;
-      let restFiles = 0;
-      for (const child of children) {
-        if (child.s >= request.minKeep && kept.length < request.maxChildren) kept.push(child);
-        else {
-          restSize += child.s;
-          restFiles += child.f;
-        }
-      }
-      if (restSize > 0) kept.push({ n: "", s: restSize, f: restFiles, k: 3 });
-      return kept;
-    };
+    type OnDir = (name: string, dev: number) => void;
+    type OnFile = (name: string, alloc: number, links: number, fileId: number) => void;
 
-    const walk = (path: string, name: string, kind: 1 | 2, recurse: boolean): DiskNode => {
-      const node: DiskNode = { n: name, s: 0, f: 0, k: kind };
-      dirs++;
-      const fd = lib.open(ffi.ptr(encoder.encode(path + "\0")), O_RDONLY_DIRECTORY);
-      if (fd < 0) {
-        denied++;
-        node.c = [];
-        return node;
-      }
-      const subdirs: Array<{ name: string; kind: 1 | 2 }> = [];
-      const children: DiskNode[] = [];
+    /** macOS: names, types and allocated sizes for a whole directory per getattrlistbulk call. */
+    const readDirMac = (path: string, onDir: OnDir, onFile: OnFile): boolean => {
+      const fd = lib!.open(ffi!.ptr(encoder.encode(path + "\0")), O_RDONLY_DIRECTORY);
+      if (fd < 0) return false;
       try {
         for (;;) {
-          const count = lib.getattrlistbulk(fd, attrPtr, bufPtr, BUF_SIZE, FSOPT_NOFOLLOW | FSOPT_PACK_INVAL_ATTRS);
+          const count = lib!.getattrlistbulk(fd, attrPtr, bufPtr, BUF_SIZE, FSOPT_NOFOLLOW | FSOPT_PACK_INVAL_ATTRS);
           if (count <= 0) {
             if (count < 0) denied++;
             break;
@@ -160,38 +148,95 @@ export function createDiskScanner(ffi: {
               continue;
             }
             const entryName = decoder.decode(buf.subarray(nameStart, nameStart + Math.max(0, nameLength - 1)));
-            if (type === VDIR) {
-              if (dev === request.dev) subdirs.push({ name: entryName, kind: PACKAGE_EXT.test(entryName) ? 2 : 1 });
-              continue;
-            }
-            if (type !== VREG) continue;
-            const links = view.getUint32(o + 28, true);
-            if (links > 1) {
-              const fileId = Number(view.getBigUint64(o + 20, true));
-              if (seenLinks.has(fileId)) continue;
-              seenLinks.add(fileId);
-            }
-            const alloc = Number(view.getBigInt64(o + 32, true));
-            files++;
-            bytes += alloc;
-            node.f++;
-            node.s += alloc;
-            const bucket = (categories[categoryFor(entryName)] ??= { size: 0, count: 0 });
-            bucket.size += alloc;
-            bucket.count++;
-            if (alloc > 0) children.push({ n: entryName, s: alloc, f: 1, k: 0 });
-            if (alloc > topMin) {
-              topFiles.push({ p: `${path === "/" ? "" : path}/${entryName}`, s: alloc });
-              if (topFiles.length > TOP_FILES * 2) {
-                topFiles.sort((a, b) => b.s - a.s);
-                topFiles = topFiles.slice(0, TOP_FILES);
-                topMin = topFiles[topFiles.length - 1].s;
-              }
+            if (type === VDIR) onDir(entryName, dev);
+            else if (type === VREG) {
+              onFile(entryName, Number(view.getBigInt64(o + 32, true)), view.getUint32(o + 28, true), Number(view.getBigUint64(o + 20, true)));
             }
           }
         }
       } finally {
-        lib.close(fd);
+        lib!.close(fd);
+      }
+      return true;
+    };
+
+    /** Windows: readdir plus one lstat per file. Junctions and symlinks aren't followed. */
+    const readDirFs = (path: string, onDir: OnDir, onFile: OnFile): boolean => {
+      let entries: Array<{ name: string; isDirectory(): boolean; isFile(): boolean; isSymbolicLink(): boolean }>;
+      try {
+        entries = fs.readdirSync(path, { withFileTypes: true }) as typeof entries;
+      } catch {
+        return false;
+      }
+      for (const entry of entries) {
+        if (entry.isSymbolicLink()) continue;
+        if (entry.isDirectory()) {
+          onDir(entry.name, request.dev);
+          continue;
+        }
+        if (!entry.isFile()) continue;
+        try {
+          const stat = fs.lstatSync(`${trimSlash(path)}/${entry.name}`);
+          onFile(entry.name, stat.size, stat.nlink, stat.ino);
+        } catch {
+          denied++;
+        }
+      }
+      return true;
+    };
+
+    const readDir = lib ? readDirMac : readDirFs;
+
+    const prune = (children: DiskNode[]): DiskNode[] => {
+      children.sort((a, b) => b.s - a.s);
+      const kept: DiskNode[] = [];
+      let restSize = 0;
+      let restFiles = 0;
+      for (const child of children) {
+        if (child.s >= request.minKeep && kept.length < request.maxChildren) kept.push(child);
+        else {
+          restSize += child.s;
+          restFiles += child.f;
+        }
+      }
+      if (restSize > 0) kept.push({ n: "", s: restSize, f: restFiles, k: 3 });
+      return kept;
+    };
+
+    const walk = (path: string, name: string, kind: 1 | 2, recurse: boolean): DiskNode => {
+      const node: DiskNode = { n: name, s: 0, f: 0, k: kind };
+      dirs++;
+      const subdirs: Array<{ name: string; kind: 1 | 2 }> = [];
+      const children: DiskNode[] = [];
+      const onDir = (entryName: string, dev: number) => {
+        if (dev === request.dev) subdirs.push({ name: entryName, kind: PACKAGE_EXT.test(entryName) ? 2 : 1 });
+      };
+      const onFile = (entryName: string, alloc: number, links: number, fileId: number) => {
+        if (links > 1 && fileId) {
+          if (seenLinks.has(fileId)) return;
+          seenLinks.add(fileId);
+        }
+        files++;
+        bytes += alloc;
+        node.f++;
+        node.s += alloc;
+        const bucket = (categories[categoryFor(entryName)] ??= { size: 0, count: 0 });
+        bucket.size += alloc;
+        bucket.count++;
+        if (alloc > 0) children.push({ n: entryName, s: alloc, f: 1, k: 0 });
+        if (alloc > topMin) {
+          topFiles.push({ p: `${trimSlash(path)}/${entryName}`, s: alloc });
+          if (topFiles.length > TOP_FILES * 2) {
+            topFiles.sort((a, b) => b.s - a.s);
+            topFiles = topFiles.slice(0, TOP_FILES);
+            topMin = topFiles[topFiles.length - 1].s;
+          }
+        }
+      };
+      if (!readDir(path, onDir, onFile)) {
+        denied++;
+        node.c = [];
+        return node;
       }
       const now = Date.now();
       if (now - lastEmit > 150) {
@@ -204,7 +249,7 @@ export function createDiskScanner(ffi: {
         return node;
       }
       for (const sub of subdirs) {
-        const child = walk(`${path === "/" ? "" : path}/${sub.name}`, sub.name, sub.kind, true);
+        const child = walk(`${trimSlash(path)}/${sub.name}`, sub.name, sub.kind, true);
         node.s += child.s;
         node.f += child.f;
         children.push(child);
@@ -213,7 +258,7 @@ export function createDiskScanner(ffi: {
       return node;
     };
 
-    const name = request.path === "/" ? "/" : request.path.slice(request.path.lastIndexOf("/") + 1);
+    const name = trimSlash(request.path).slice(trimSlash(request.path).lastIndexOf("/") + 1) || request.path;
     const node = walk(request.path, name, 2 - Number(!PACKAGE_EXT.test(name)) as 1 | 2, request.mode === "tree");
     topFiles.sort((a, b) => b.s - a.s);
     onProgress({ files, dirs, bytes, current: request.path });

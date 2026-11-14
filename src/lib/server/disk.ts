@@ -8,6 +8,7 @@ import type { DiskReport, DiskScanState, DiskSuggestion, DiskViewNode } from "..
 import { createDiskScanner, type DiskNode, type DiskScanRequest, type DiskScanResult } from "./disk-worker";
 import { run } from "./exec";
 import { bunExecutable } from "./native";
+import { powershell } from "./win/apps";
 import { storageUsage } from "./system";
 
 /**
@@ -16,8 +17,21 @@ import { storageUsage } from "./system";
  * free, so a big home folder is spread over every worker instead of walked by one.
  */
 
-const DATA_VOLUME = "/System/Volumes/Data";
-const HOME = homedir();
+const IS_WIN = process.platform === "win32";
+/** Paths use forward slashes everywhere, which Windows accepts too (C:/Users/…). */
+const toSlash = (p: string) => p.replace(/\\/g, "/");
+const DATA_VOLUME = IS_WIN ? `${(process.env.SystemDrive || "C:").replace(/[\\/]$/, "")}/` : "/System/Volumes/Data";
+const HOME = IS_WIN ? toSlash(homedir()) : homedir();
+
+const trimSlash = (p: string) => (p.endsWith("/") ? p.slice(0, -1) : p);
+
+/** "/" means the whole disk. Trailing slashes go, except on a drive root like "C:/". */
+function normalizeRoot(requested: string): string {
+  if (requested === "/") return DATA_VOLUME;
+  const path = toSlash(requested);
+  if (/^[A-Za-z]:\/?$/.test(path)) return `${path.slice(0, 2).toUpperCase()}/`;
+  return path.replace(/\/+$/, "") || "/";
+}
 const CACHE_FILE = appDataFile("disk-scan.json");
 const MIN_KEEP = 1024 * 1024;
 const MAX_CHILDREN = 200;
@@ -25,7 +39,7 @@ const MAX_CHILDREN = 200;
 const WORKER_SOURCE = `
 const ffi = require("bun:ffi");
 const { writeSync } = require("node:fs");
-const scan = (${createDiskScanner.toString()})(ffi);
+const scan = (${createDiskScanner.toString()})(process.platform === "darwin" ? ffi : null, require("node:fs"));
 const send = (message) => writeSync(1, JSON.stringify(message) + "\\n");
 require("node:readline").createInterface({ input: process.stdin }).on("line", (line) => {
   let request;
@@ -65,10 +79,12 @@ interface Worker {
 }
 
 function displayPath(path: string) {
+  if (IS_WIN) return path;
   return path.startsWith(DATA_VOLUME + "/") ? path.slice(DATA_VOLUME.length) : path === DATA_VOLUME ? "/" : path;
 }
 
 function labelFor(root: string) {
+  if (IS_WIN && /^[A-Za-z]:\/$/.test(root)) return `Local Disk (${root.slice(0, 2)})`;
   if (root === DATA_VOLUME || root === "/") return "Macintosh HD";
   if (root === HOME) return "Home";
   return basename(root) || root;
@@ -137,7 +153,7 @@ class DiskAnalyzer {
   start(requested: string): DiskScanState {
     this.load();
     if (this.state.status === "scanning") return this.state;
-    const root = requested === "/" ? DATA_VOLUME : requested.replace(/\/+$/, "") || "/";
+    const root = normalizeRoot(requested);
     let dev: number;
     try {
       const stat = statSync(root);
@@ -280,7 +296,7 @@ class DiskAnalyzer {
           for (const sub of node.pending ?? []) {
             const child: DiskNode = { n: sub.name, s: 0, f: 0, k: sub.kind };
             target.c.push(child);
-            enqueue(`${task.path === "/" ? "" : task.path}/${sub.name}`, task.depth + 1, child);
+            enqueue(`${trimSlash(task.path)}/${sub.name}`, task.depth + 1, child);
           }
         }
         dispatch();
@@ -328,8 +344,9 @@ class DiskAnalyzer {
     let target = path;
     if (!target.startsWith(root) && root === DATA_VOLUME && target.startsWith("/")) target = DATA_VOLUME + target;
     if (target === root) return { node: tree, trail: [tree] };
-    if (!target.startsWith(root === "/" ? "/" : root + "/")) return null;
-    const parts = target.slice(root === "/" ? 1 : root.length + 1).split("/").filter(Boolean);
+    const prefix = trimSlash(root) + "/";
+    if (!target.startsWith(prefix)) return null;
+    const parts = target.slice(prefix.length).split("/").filter(Boolean);
     let node = tree;
     const trail = [tree];
     for (const part of parts) {
@@ -356,7 +373,7 @@ class DiskAnalyzer {
       const limit = limits[0];
       const kids = node.c.slice(0, limit);
       const rest = node.c.slice(limit);
-      out.children = kids.map((c) => this.view(c, `${path === "/" ? "" : path}/${c.n}`, depth - 1, limits.slice(1)));
+      out.children = kids.map((c) => this.view(c, `${trimSlash(path)}/${c.n}`, depth - 1, limits.slice(1)));
       if (rest.length) {
         const s = rest.reduce((sum, c) => sum + c.s, 0);
         const f = rest.reduce((sum, c) => sum + c.f, 0);
@@ -372,7 +389,18 @@ class DiskAnalyzer {
 
   private suggestions(): DiskSuggestion[] {
     const size = (path: string) => this.locate(path)?.node.s ?? 0;
-    const known: Array<Omit<DiskSuggestion, "size"> & { path: string }> = [
+    const LOCAL = toSlash(process.env.LOCALAPPDATA || join(HOME, "AppData", "Local"));
+    const windowsKnown: Array<Omit<DiskSuggestion, "size"> & { path: string }> = [
+      { id: "temp", title: "Temporary files", description: "Leftovers from installers and apps. Anything still in use is skipped when you delete.", path: `${LOCAL}/Temp`, safe: true },
+      { id: "chrome-cache", title: "Chrome cache", description: "Chrome rebuilds its cache as you browse.", path: `${LOCAL}/Google/Chrome/User Data/Default/Cache`, safe: true },
+      { id: "edge-cache", title: "Edge cache", description: "Edge rebuilds its cache as you browse.", path: `${LOCAL}/Microsoft/Edge/User Data/Default/Cache`, safe: true },
+      { id: "crash-dumps", title: "Crash dumps", description: "Memory dumps from apps that crashed. Only useful for debugging.", path: `${LOCAL}/CrashDumps`, safe: true },
+      { id: "docker", title: "Docker disk image", description: "Containers, images and volumes. Reclaim space with `docker system prune` rather than deleting the file.", path: `${LOCAL}/Docker/wsl`, safe: false },
+      { id: "updates", title: "Windows Update downloads", description: "Update files Windows already installed. Clear them with Disk Cleanup > Windows Update Cleanup.", path: `${DATA_VOLUME}Windows/SoftwareDistribution/Download`, safe: false },
+      { id: "downloads", title: "Downloads", description: "Installers and files you downloaded. Often full of things you no longer need.", path: `${HOME}/Downloads`, safe: false },
+      { id: "npm", title: "Package manager caches", description: "npm, pnpm, Yarn and Bun download caches. They refill on the next install.", path: `${LOCAL}/npm-cache`, safe: true },
+    ];
+    const macKnown: Array<Omit<DiskSuggestion, "size"> & { path: string }> = [
       { id: "trash", title: "Trash", description: "Files you've already deleted. Empty the Trash in Finder to get the space back.", path: join(HOME, ".Trash"), safe: true },
       { id: "caches", title: "App caches", description: "Apps rebuild these as needed. Safe to clear, though apps may start a little slower once.", path: join(HOME, "Library", "Caches"), safe: true },
       { id: "derived", title: "Xcode build data", description: "DerivedData is rebuilt the next time you build a project.", path: join(HOME, "Library", "Developer", "Xcode", "DerivedData"), safe: true },
@@ -384,7 +412,10 @@ class DiskAnalyzer {
       { id: "downloads", title: "Downloads", description: "Installers and files you downloaded. Often full of things you no longer need.", path: join(HOME, "Downloads"), safe: false },
       { id: "npm", title: "Package manager caches", description: "npm, pnpm, Yarn and Bun download caches. They refill on the next install.", path: join(HOME, ".npm"), safe: true },
     ];
-    const extraCaches = [join(HOME, "Library", "pnpm"), join(HOME, ".pnpm-store"), join(HOME, ".bun", "install", "cache"), join(HOME, ".cache")];
+    const known = IS_WIN ? windowsKnown : macKnown;
+    const extraCaches = IS_WIN
+      ? [`${LOCAL}/pnpm/store`, `${LOCAL}/Yarn/Cache`, `${HOME}/.bun/install/cache`, `${HOME}/.cache`]
+      : [join(HOME, "Library", "pnpm"), join(HOME, ".pnpm-store"), join(HOME, ".bun", "install", "cache"), join(HOME, ".cache")];
     const results: DiskSuggestion[] = known.map((k) => ({ ...k, size: size(k.path) }));
     const npm = results.find((r) => r.id === "npm")!;
     npm.items = [{ path: npm.path!, size: npm.size }, ...extraCaches.map((path) => ({ path, size: size(path) }))].filter((i) => i.size > 0);
@@ -392,12 +423,12 @@ class DiskAnalyzer {
     if (npm.items.length) npm.path = npm.items.sort((a, b) => b.size - a.size)[0].path;
 
     // Dependency and build folders anywhere in the scan; the outermost one counts, not nested copies.
-    const DEV = new Set(["node_modules", ".venv", "venv", ".next", "Pods", ".build", ".gradle", ".turbo", "DerivedData"]);
+    const DEV = new Set(["node_modules", ".venv", "venv", ".next", "Pods", ".build", ".gradle", ".turbo", "DerivedData", ".nuxt", ".parcel-cache"]);
     const found: Array<{ path: string; size: number }> = [];
     const walk = (node: DiskNode, path: string) => {
       for (const c of node.c ?? []) {
         if (c.k === 0 || c.k === 3) continue;
-        const p = `${path === "/" ? "" : path}/${c.n}`;
+        const p = `${trimSlash(path)}/${c.n}`;
         if (DEV.has(c.n)) found.push({ path: displayPath(p), size: c.s });
         else walk(c, p);
       }
@@ -430,10 +461,10 @@ class DiskAnalyzer {
     const segments: string[] = [];
     const crumbs = trail.map((n, i) => {
       if (i > 0) segments.push(n.n);
-      const abs = i === 0 ? root : `${root === "/" ? "" : root}/${segments.join("/")}`;
+      const abs = i === 0 ? root : `${trimSlash(root)}/${segments.join("/")}`;
       return { name: i === 0 ? labelFor(root) : n.n, path: displayPath(abs) };
     });
-    const absolute = crumbs.length > 1 ? `${root === "/" ? "" : root}/${segments.join("/")}` : root;
+    const absolute = crumbs.length > 1 ? `${trimSlash(root)}/${segments.join("/")}` : root;
     const prefix = absolute === root ? "" : absolute + "/";
     return {
       ...base,
@@ -463,6 +494,7 @@ class DiskAnalyzer {
     const located = this.locate(path);
     if (!located || located.trail.length < 2) return { ok: false, message: "That item isn't part of the scan." };
     const real = path;
+    if (IS_WIN) return this.recycle(real, located.trail);
     const protectedPaths = new Set(
       [HOME, join(HOME, "Library"), join(HOME, "Documents"), join(HOME, "Desktop"), join(HOME, "Downloads"), join(HOME, "Applications"), "/Applications", "/Library", "/System", "/Users", "/usr", "/bin", "/sbin", "/private", "/opt", "/Volumes", "/cores"].flatMap(
         (p) => [p, DATA_VOLUME + p],
@@ -492,6 +524,34 @@ end run`;
     return { ok: true, message: `Moved ${basename(real)} to the Trash.` };
   }
 
+  private async recycle(real: string, trail: DiskNode[]): Promise<{ ok: boolean; message: string }> {
+    const drive = DATA_VOLUME;
+    const protectedPaths = new Set(
+      [HOME, `${HOME}/Documents`, `${HOME}/Desktop`, `${HOME}/Downloads`, `${HOME}/AppData`, `${HOME}/AppData/Local`, `${HOME}/AppData/Roaming`, drive, `${drive}Windows`, `${drive}Program Files`, `${drive}Program Files (x86)`, `${drive}ProgramData`, `${drive}Users`].map((p) => trimSlash(p).toLowerCase()),
+    );
+    if (protectedPaths.has(trimSlash(real).toLowerCase()) || /^[a-z]:\/?$/i.test(real)) {
+      return { ok: false, message: "Systo won't move a top-level system or user folder to the Recycle Bin." };
+    }
+    if (!existsSync(real)) {
+      this.forget(trail);
+      return { ok: true, message: "It was already gone." };
+    }
+    const { code, stderr } = await powershell(
+      `$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName Microsoft.VisualBasic
+$p = $env:SYSTO_PATH
+try {
+  if (Test-Path -LiteralPath $p -PathType Container) { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, 'OnlyErrorDialogs', 'SendToRecycleBin') }
+  else { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, 'OnlyErrorDialogs', 'SendToRecycleBin') }
+} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`,
+      { SYSTO_PATH: real.replace(/\//g, "\\") },
+      120000,
+    );
+    if (code !== 0) return { ok: false, message: `Couldn't move it to the Recycle Bin: ${stderr.trim() || "Windows refused."}` };
+    this.forget(trail);
+    return { ok: true, message: `Moved ${basename(real)} to the Recycle Bin.` };
+  }
+
   private forget(trail: DiskNode[]) {
     const node = trail[trail.length - 1];
     const parent = trail[trail.length - 2];
@@ -502,7 +562,7 @@ end run`;
     }
     if (this.result) {
       const segments = trail.slice(1).map((n) => n.n);
-      const abs = `${this.result.root === "/" ? "" : this.result.root}/${segments.join("/")}`;
+      const abs = `${trimSlash(this.result.root)}/${segments.join("/")}`;
       this.result.topFiles = this.result.topFiles.filter((f) => f.p !== abs && !f.p.startsWith(abs + "/"));
       this.result.stats.bytes = Math.max(0, this.result.stats.bytes - node.s);
       this.save();
@@ -510,6 +570,19 @@ end run`;
   }
 
   async choose(): Promise<string | null> {
+    if (IS_WIN) {
+      const { stdout } = await powershell(
+        `Add-Type -AssemblyName System.Windows.Forms
+$owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true; ShowInTaskbar = $false }
+$d = New-Object System.Windows.Forms.FolderBrowserDialog
+$d.Description = 'Choose a folder for Systo to analyze'
+if ($d.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.SelectedPath) }
+$owner.Dispose()`,
+        {},
+        10 * 60_000,
+      );
+      return stdout.trim() ? toSlash(stdout.trim()) : null;
+    }
     const { code, stdout } = await run(
       "/usr/bin/osascript",
       ["-e", 'POSIX path of (choose folder with prompt "Choose a folder for Systo to analyze")'],
