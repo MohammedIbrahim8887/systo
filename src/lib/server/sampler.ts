@@ -540,8 +540,9 @@ export class Sampler {
         processes.find((p) => p.kind !== "helper" && !pids.has(p.ppid)) ??
         processes.find((p) => p.kind !== "helper") ??
         processes[0];
-      const kind = head.kind === "helper" ? "menu-bar" : head.kind;
       const self = id === "app:systo";
+      // Systo runs on bun.exe, which would otherwise read as a dev tool.
+      const kind = self ? "app" : head.kind === "helper" ? "menu-bar" : head.kind;
       const info = head.path ? exeInfo(head.path) : undefined;
       groups.push({
         id,

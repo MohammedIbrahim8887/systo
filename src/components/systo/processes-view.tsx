@@ -1,6 +1,6 @@
 "use client";
 
-import { OS, isModKey } from "@/lib/platform";
+import { IS_WINDOWS, OS, isModKey } from "@/lib/platform";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import {
   ArrowDownIcon,
@@ -480,7 +480,7 @@ export function ProcessesView({ snapshot }: { snapshot: Snapshot | null }) {
               }
             }}
             placeholder="Search name or PID"
-            className="h-8 rounded-md pr-12 pl-8 text-[13px] shadow-none"
+            className={cn("h-8 rounded-md pl-8 text-[13px] shadow-none", IS_WINDOWS ? "pr-[62px]" : "pr-12")}
             spellCheck={false}
           />
           {query ? (
