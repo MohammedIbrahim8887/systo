@@ -1,0 +1,232 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { ArrowUpRightIcon, CpuIcon, HardDriveIcon, MemoryStickIcon, WifiIcon, type LucideIcon } from "lucide-react";
+import { usePoll } from "@/lib/client/use-poll";
+import { sendShellCommand } from "@/lib/client/shell";
+import { formatBytes, formatRate } from "@/lib/format";
+import { METRIC_META } from "@/lib/kinds";
+import type { IslandData, Metric } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { AppIcon } from "./app-icon";
+import { Logo } from "./logo";
+
+declare global {
+  interface Window {
+    __systoIsland?: { expanded: boolean };
+  }
+}
+
+const METRICS: Array<{ id: Metric; icon: LucideIcon }> = [
+  { id: "cpu", icon: CpuIcon },
+  { id: "memory", icon: MemoryStickIcon },
+  { id: "disk", icon: HardDriveIcon },
+  { id: "network", icon: WifiIcon },
+];
+
+const METRIC_KEY = "systo:island-metric";
+
+function compactRate(bytes: number) {
+  if (bytes < 1024) return `${Math.round(bytes)}B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}K`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)}M`;
+  return `${(bytes / 1024 ** 3).toFixed(1)}G`;
+}
+
+function formatValue(metric: Metric, value: number, cores: number) {
+  if (metric === "cpu") return `${(value / cores).toFixed(value / cores < 10 ? 1 : 0)}%`;
+  if (metric === "memory") return formatBytes(value);
+  return formatRate(value);
+}
+
+function totalLabel(data: IslandData) {
+  const t = data.totals;
+  switch (data.metric) {
+    case "cpu":
+      return `${Math.round(t.cpu)}%`;
+    case "memory":
+      return `${Math.round((t.memoryUsed / t.memoryTotal) * 100)}%`;
+    case "disk":
+      return `${compactRate(t.diskRead + t.diskWrite)}/s`;
+    case "network":
+      return `${compactRate(t.netIn + t.netOut)}/s`;
+  }
+}
+
+export type IslandParams = Record<string, string | string[] | undefined>;
+
+function readParam(params: IslandParams, name: string, fallback: number) {
+  const value = Number(params[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+export function Island({ params = {} }: { params?: IslandParams }) {
+  const geometry = {
+    notchWidth: readParam(params, "nw", 0),
+    notchHeight: readParam(params, "nh", 32),
+    width: readParam(params, "w", 460),
+    desktop: params.shell !== undefined,
+  };
+  const [expanded, setExpanded] = useState(false);
+  const [metric, setMetric] = useState<Metric>("cpu");
+  const [colorIcons, setColorIcons] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(METRIC_KEY) as Metric | null;
+      if (saved && METRICS.some((m) => m.id === saved)) setMetric(saved);
+      const settings = JSON.parse(localStorage.getItem("systo:settings") ?? "{}") as { colorIcons?: boolean };
+      setColorIcons(Boolean(settings.colorIcons));
+    } catch {
+      // defaults
+    }
+    const sync = () => setExpanded(Boolean(window.__systoIsland?.expanded));
+    sync();
+    window.addEventListener("systo:island", sync);
+    return () => window.removeEventListener("systo:island", sync);
+  }, []);
+
+  const chooseMetric = (next: Metric) => {
+    setMetric(next);
+    try {
+      localStorage.setItem(METRIC_KEY, next);
+    } catch {
+      // storage unavailable
+    }
+  };
+
+  const { data } = usePoll<IslandData>(`/api/island?metric=${metric}`, expanded ? 1000 : 2000);
+
+  const { notchWidth, notchHeight } = geometry;
+  const wing = 62;
+  const collapsedWidth = notchWidth > 0 ? notchWidth + wing * 2 : 220;
+  const expandedWidth = Math.min(geometry.width - 20, 440);
+  const expandedHeight = notchHeight + 200;
+  const top = data?.entries[0];
+  const cores = data?.totals.cores ?? 1;
+  const ActiveIcon = useMemo(() => METRICS.find((m) => m.id === metric)!.icon, [metric]);
+
+  return (
+    <div className="pointer-events-none fixed inset-0 flex justify-center overflow-hidden select-none">
+      <style>{`html,body{background:transparent!important;color-scheme:dark}`}</style>
+      <div
+        className="pointer-events-auto relative text-white"
+        onMouseEnter={() => !geometry.desktop && setExpanded(true)}
+        onMouseLeave={() => !geometry.desktop && setExpanded(false)}
+        style={{
+          width: expanded ? expandedWidth : collapsedWidth,
+          height: expanded ? expandedHeight : notchHeight,
+          background: "#000",
+          borderRadius: expanded ? "0 0 30px 30px" : `0 0 ${Math.min(14, notchHeight / 2.4)}px ${Math.min(14, notchHeight / 2.4)}px`,
+          boxShadow: expanded ? "0 18px 40px -12px rgba(0,0,0,0.55), 0 0 0 0.5px rgba(255,255,255,0.06)" : "none",
+          transitionProperty: "width, height, border-radius, box-shadow",
+          transitionDuration: expanded ? "560ms" : "380ms",
+          transitionTimingFunction: expanded ? "cubic-bezier(0.3, 1.32, 0.5, 1)" : "cubic-bezier(0.4, 0, 0.2, 1)",
+        }}
+      >
+        <span
+          aria-hidden
+          className="absolute top-0 -left-2 size-2"
+          style={{ background: "radial-gradient(circle at 0 100%, transparent 7.5px, #000 8px)" }}
+        />
+        <span
+          aria-hidden
+          className="absolute top-0 -right-2 size-2"
+          style={{ background: "radial-gradient(circle at 100% 100%, transparent 7.5px, #000 8px)" }}
+        />
+
+        {/* Collapsed: one wing either side of the notch. */}
+        <div
+          className="absolute inset-x-0 top-0 flex items-center justify-between px-3.5 transition-opacity"
+          style={{ height: notchHeight, opacity: expanded ? 0 : 1, transitionDuration: expanded ? "120ms" : "260ms", transitionDelay: expanded ? "0ms" : "160ms" }}
+        >
+          <div className="flex min-w-0 items-center gap-1.5">
+            {top ? (
+              <AppIcon bundlePath={top.bundlePath} hasIcon={top.hasIcon} kind={top.kind} size={15} color={colorIcons} className="rounded-[4px] bg-white/10 text-white/80" />
+            ) : (
+              <Logo className="size-[15px] text-white" />
+            )}
+          </div>
+          <div className="flex items-center gap-1 text-[11.5px] font-medium tabular text-white/90">
+            <ActiveIcon className="size-3 text-white/50" strokeWidth={2} />
+            {data ? totalLabel(data) : "–"}
+          </div>
+        </div>
+
+        {/* Expanded panel. */}
+        <div
+          className="absolute inset-0 flex flex-col px-4 pb-3.5 transition-[opacity,transform]"
+          style={{
+            opacity: expanded ? 1 : 0,
+            transform: expanded ? "scale(1)" : "scale(0.96)",
+            transformOrigin: "top center",
+            transitionDuration: expanded ? "260ms" : "120ms",
+            transitionDelay: expanded ? "140ms" : "0ms",
+            pointerEvents: expanded ? "auto" : "none",
+          }}
+        >
+          <div className="flex shrink-0 items-center justify-between" style={{ height: notchHeight }}>
+            <div className="flex items-center gap-1.5 text-[11px] font-medium text-white/60">
+              <Logo className="size-3.5 text-white" />
+              Systo
+            </div>
+            <div className="text-[11px] tabular text-white/60">
+              {data ? `${METRIC_META[metric].label} ${totalLabel(data)}` : ""}
+            </div>
+          </div>
+
+          <div className="mt-2 grid shrink-0 grid-cols-4 gap-1 rounded-full bg-white/[0.07] p-[3px]">
+            {METRICS.map(({ id, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => chooseMetric(id)}
+                className={cn(
+                  "flex h-6 items-center justify-center gap-1 rounded-full text-[11px] font-medium transition-colors",
+                  metric === id ? "bg-white text-black" : "text-white/60 hover:bg-white/10 hover:text-white",
+                )}
+              >
+                <Icon className="size-3" strokeWidth={2.2} />
+                {METRIC_META[id].short}
+              </button>
+            ))}
+          </div>
+
+          <ol className="mt-3 min-h-0 flex-1 space-y-1.5">
+            {(data?.entries ?? []).map((entry, index) => (
+              <li key={entry.id} className="group/row flex h-[30px] items-center gap-2.5">
+                <span className="w-3 shrink-0 text-center text-[10px] tabular text-white/35">{index + 1}</span>
+                <AppIcon bundlePath={entry.bundlePath} hasIcon={entry.hasIcon} kind={entry.kind} size={20} color={colorIcons} className="rounded-[5px] bg-white/10 text-white/80" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[12.5px] leading-tight text-white/95">{entry.name}</div>
+                  <div className="mt-1 h-[3px] overflow-hidden rounded-full bg-white/10">
+                    <div className="h-full rounded-full bg-white/80 transition-[width] duration-700 ease-out" style={{ width: `${Math.max(3, entry.share * 100)}%` }} />
+                  </div>
+                </div>
+                <span className="w-[72px] shrink-0 text-right text-[12px] tabular text-white/90">{formatValue(metric, entry.value, cores)}</span>
+              </li>
+            ))}
+            {data && data.entries.length === 0 && <li className="pt-4 text-center text-[12px] text-white/50">Nothing busy right now</li>}
+            {!data && <li className="pt-4 text-center text-[12px] text-white/50">Sampling…</li>}
+          </ol>
+
+          <div className="flex shrink-0 items-center justify-between pt-1 text-[10.5px] text-white/40">
+            <span className="tabular">
+              {data && metric === "cpu" && `${cores} cores`}
+              {data && metric === "memory" && `${formatBytes(data.totals.memoryUsed)} of ${formatBytes(data.totals.memoryTotal, 0)}`}
+              {data && metric === "disk" && `R ${formatRate(data.totals.diskRead)} · W ${formatRate(data.totals.diskWrite)}`}
+              {data && metric === "network" && `↓ ${formatRate(data.totals.netIn)} · ↑ ${formatRate(data.totals.netOut)}`}
+            </span>
+            <button
+              type="button"
+              onClick={() => (geometry.desktop ? sendShellCommand({ type: "open-main" }) : window.open("/", "_blank"))}
+              className="flex items-center gap-0.5 rounded-full px-2 py-0.5 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              Open Systo <ArrowUpRightIcon className="size-3" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
