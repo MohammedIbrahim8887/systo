@@ -1,3 +1,18 @@
+diff --git a/dist/electrobun/index.js b/dist/electrobun/index.js
+index b6965518a0f1e1d7c61d5a7b23c7a7f10b1d930f..2ff5854073a741e0265b35c38d2c8ada4004d589 100644
+--- a/dist/electrobun/index.js
++++ b/dist/electrobun/index.js
+@@ -76,6 +76,10 @@ export default defineDesktopShell({
+             { path: "electrobun.config.ts", contents: createElectrobunConfig(context) },
+             { path: "main.ts", contents: createElectrobunMain(context) },
+             { path: ICONSET_IMAGE, contents: await readFile(context.desktop.icon ?? DEFAULT_ICON) },
++            {
++                path: "icon-win.png",
++                contents: await readFile(path.join(path.dirname(context.desktop.icon ?? DEFAULT_ICON), "icon-256.png")).catch(() => readFile(context.desktop.icon ?? DEFAULT_ICON)),
++            },
+         ];
+     },
+     async dev(context) {
 diff --git a/dist/electrobun/templates.js b/dist/electrobun/templates.js
 index 28802faed8b25c3184ffd44dd7eaf200d2837857..559ee6ca3375b28abf32e9cdcf6c1a4fddba2a9e 100644
 --- a/dist/electrobun/templates.js
@@ -7,8 +22,8 @@ index 28802faed8b25c3184ffd44dd7eaf200d2837857..559ee6ca3375b28abf32e9cdcf6c1a4f
              mac: { bundleCEF: false, createDmg: false, icons: ICONSET_DIR },
              linux: { bundleCEF: false },
 -            win: { bundleCEF: false },
-+            // Windows uses the same 1024px PNG for the exe and installer icon.
-+            win: { bundleCEF: false, icon: ICONSET_IMAGE },
++            // Windows takes a PNG up to 256px for the exe and installer icon.
++            win: { bundleCEF: false, icon: "icon-win.png" },
          },
          runtime: { exitOnLastWindowClosed: true },
      };
