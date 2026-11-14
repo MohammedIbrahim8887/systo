@@ -37,41 +37,52 @@ jobs:
       - name: Build the desktop app
         run: pnpm build
 
-      - name: Collect the installer
+      - name: Package a one-file installer
         shell: pwsh
         run: |
           Get-ChildItem -Recurse .farm/output/desktop/dist | Select-Object FullName, Length | Format-Table -AutoSize | Out-String -Width 400
-          New-Item -ItemType Directory -Force release | Out-Null
-          $setup = Get-ChildItem -Recurse .farm/output/desktop -Filter "*Setup*.exe" | Select-Object -First 1
-          if (-not $setup) { throw "No Setup.exe was produced" }
-          Copy-Item $setup.FullName "release/Systo-Setup-x64.exe"
-          Get-ChildItem -Recurse .farm/output/desktop/dist -Include *.zip,*.tar.zst,*.json | ForEach-Object { Copy-Item $_.FullName release/ }
-          Get-FileHash release/Systo-Setup-x64.exe -Algorithm SHA256 | Format-List
+          New-Item -ItemType Directory -Force release, payload | Out-Null
+          $zip = Get-ChildItem -Recurse .farm/output/desktop/dist -Filter "*Setup.zip" | Select-Object -First 1
+          if (-not $zip) { throw "Electrobun produced no setup zip" }
+          Expand-Archive $zip.FullName -DestinationPath payload -Force
+          Get-ChildItem -Recurse -Force payload | Select-Object FullName, Length | Format-Table -AutoSize | Out-String -Width 400
+          $icon = Get-ChildItem -Recurse .farm/output/desktop/dist -Filter "app.ico" | Select-Object -First 1
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc "/DPayload=$((Resolve-Path payload).Path)" "/DAppVersion=$version" "/DIcon=$($icon.FullName)" installer/windows/systo.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          Copy-Item $zip.FullName release/Systo-Windows-x64.zip
+          Get-FileHash release/* -Algorithm SHA256 | Format-Table -AutoSize | Out-String -Width 400
 
       - name: Install, launch and screenshot
         continue-on-error: true
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force proof | Out-Null
-          $installer = Start-Process -FilePath release/Systo-Setup-x64.exe -PassThru
-          $installer | Wait-Process -Timeout 120 -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 10
-          Get-ChildItem -Recurse -Depth 4 "$env:LOCALAPPDATA" -Filter "*.exe" -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -match "systo" } | Select-Object -ExpandProperty FullName | Tee-Object proof/installed.txt
-          Get-Process | Where-Object { $_.Path -match "systo" } | Select-Object Id, ProcessName, Path | Format-Table -AutoSize | Out-String -Width 400
-          if (-not (Get-Process | Where-Object { $_.Path -match "systo" -and $_.ProcessName -match "launcher|bun|Systo" })) {
-            $launcher = Get-ChildItem -Recurse "$env:LOCALAPPDATA" -Filter "launcher.exe" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match "systo" } | Select-Object -First 1
-            if ($launcher) { Start-Process $launcher.FullName }
-          }
-          Start-Sleep -Seconds 25
-          Get-Process | Where-Object { $_.Path -match "systo|webview" } | Select-Object Id, ProcessName, Path | Format-Table -AutoSize | Out-String -Width 400
           Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-          $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-          $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
-          $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-          $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
-          $bitmap.Save("proof/desktop.png", [System.Drawing.Imaging.ImageFormat]::Png)
-          Get-ChildItem -Recurse "$env:LOCALAPPDATA" -Filter "*.log" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match "systo" } | ForEach-Object { Copy-Item $_.FullName proof/ }
+          function Shot($name) {
+            $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+            $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+            $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+            $bitmap.Save("proof/$name.png", [System.Drawing.Imaging.ImageFormat]::Png)
+          }
+          # Get the runner's console out of the way so the screenshots show the app.
+          (New-Object -ComObject Shell.Application).MinimizeAll()
+          Start-Process -FilePath release/Systo-Setup-x64.exe -ArgumentList "/SP-", "/SUPPRESSMSGBOXES"
+          Start-Sleep -Seconds 20
+          Shot "01-installing"
+          Start-Sleep -Seconds 40
+          Shot "02-after-install"
+          Get-Process | Where-Object { $_.Path -match "systo|webview" } | Select-Object Id, ProcessName, Path | Format-Table -AutoSize | Out-String -Width 400
+          Get-ChildItem -Recurse -Depth 5 "$env:LOCALAPPDATA" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match "systo" -and -not $_.PSIsContainer } | Select-Object -First 40 FullName, Length | Format-Table -AutoSize | Out-String -Width 400
+          if (-not (Get-Process | Where-Object { $_.Path -match "systo" -and $_.ProcessName -notmatch "Setup" })) {
+            $launcher = Get-ChildItem -Recurse "$env:LOCALAPPDATA" -Filter "launcher.exe" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match "systo" } | Select-Object -First 1
+            if ($launcher) { Write-Host "Starting $($launcher.FullName)"; Start-Process $launcher.FullName; Start-Sleep -Seconds 30 }
+          }
+          Shot "03-running"
+          Get-Process | Where-Object { $_.Path -match "systo|webview" } | Select-Object Id, ProcessName, Path | Format-Table -AutoSize | Out-String -Width 400
 
       - uses: actions/upload-artifact@v4
         with:
