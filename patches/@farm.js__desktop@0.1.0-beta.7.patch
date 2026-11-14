@@ -1,0 +1,14 @@
+diff --git a/dist/electrobun/templates.js b/dist/electrobun/templates.js
+index 28802faed8b25c3184ffd44dd7eaf200d2837857..559ee6ca3375b28abf32e9cdcf6c1a4fddba2a9e 100644
+--- a/dist/electrobun/templates.js
++++ b/dist/electrobun/templates.js
+@@ -28,7 +28,8 @@ export function createElectrobunConfig(context) {
+             // The system WebView (WKWebView, WebView2, WebKitGTK): no bundled Chromium.
+             mac: { bundleCEF: false, createDmg: false, icons: ICONSET_DIR },
+             linux: { bundleCEF: false },
+-            win: { bundleCEF: false },
++            // Windows uses the same 1024px PNG for the exe and installer icon.
++            win: { bundleCEF: false, icon: ICONSET_IMAGE },
+         },
+         runtime: { exitOnLastWindowClosed: true },
+     };

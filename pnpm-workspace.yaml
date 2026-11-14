@@ -9,3 +9,6 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - "@farm.js/*"
+
+patchedDependencies:
+  '@farm.js/desktop@0.1.0-beta.7': patches/@farm.js__desktop@0.1.0-beta.7.patch

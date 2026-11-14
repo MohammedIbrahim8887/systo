@@ -1,0 +1,86 @@
+name: Windows build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        run: pnpm type-check
+
+      - name: Unit tests
+        run: bun test tests
+
+      - name: Smoke test the Windows data layer
+        run: bun scripts/win-smoke.ts
+
+      - name: Build the desktop app
+        run: pnpm build
+
+      - name: Collect the installer
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse .farm/output/desktop/dist | Select-Object FullName, Length | Format-Table -AutoSize | Out-String -Width 400
+          New-Item -ItemType Directory -Force release | Out-Null
+          $setup = Get-ChildItem -Recurse .farm/output/desktop -Filter "*Setup*.exe" | Select-Object -First 1
+          if (-not $setup) { throw "No Setup.exe was produced" }
+          Copy-Item $setup.FullName "release/Systo-Setup-x64.exe"
+          Get-ChildItem -Recurse .farm/output/desktop/dist -Include *.zip,*.tar.zst,*.json | ForEach-Object { Copy-Item $_.FullName release/ }
+          Get-FileHash release/Systo-Setup-x64.exe -Algorithm SHA256 | Format-List
+
+      - name: Install, launch and screenshot
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force proof | Out-Null
+          $installer = Start-Process -FilePath release/Systo-Setup-x64.exe -PassThru
+          $installer | Wait-Process -Timeout 120 -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 10
+          Get-ChildItem -Recurse -Depth 4 "$env:LOCALAPPDATA" -Filter "*.exe" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match "systo" } | Select-Object -ExpandProperty FullName | Tee-Object proof/installed.txt
+          Get-Process | Where-Object { $_.Path -match "systo" } | Select-Object Id, ProcessName, Path | Format-Table -AutoSize | Out-String -Width 400
+          if (-not (Get-Process | Where-Object { $_.Path -match "systo" -and $_.ProcessName -match "launcher|bun|Systo" })) {
+            $launcher = Get-ChildItem -Recurse "$env:LOCALAPPDATA" -Filter "launcher.exe" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match "systo" } | Select-Object -First 1
+            if ($launcher) { Start-Process $launcher.FullName }
+          }
+          Start-Sleep -Seconds 25
+          Get-Process | Where-Object { $_.Path -match "systo|webview" } | Select-Object Id, ProcessName, Path | Format-Table -AutoSize | Out-String -Width 400
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+          $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+          $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+          $bitmap.Save("proof/desktop.png", [System.Drawing.Imaging.ImageFormat]::Png)
+          Get-ChildItem -Recurse "$env:LOCALAPPDATA" -Filter "*.log" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match "systo" } | ForEach-Object { Copy-Item $_.FullName proof/ }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Systo-Windows-x64
+          path: release/
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-proof
+          path: proof/
+          if-no-files-found: ignore
