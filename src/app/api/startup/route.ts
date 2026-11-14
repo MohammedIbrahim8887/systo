@@ -1,19 +1,21 @@
 import { openLoginItemsSettings, setStartupItem, startupReport } from "@/lib/server/startup";
 
-export async function GET(request: Request) {
-  const force = new URL(request.url).searchParams.has("refresh");
-  return Response.json(await startupReport(force), { headers: { "cache-control": "no-store" } });
+export async function GET() {
+  return Response.json(await startupReport(), { headers: { "cache-control": "no-store" } });
 }
 
 interface ToggleRequest {
   id?: string;
   enabled?: boolean;
   admin?: boolean;
-  action?: "open-settings";
+  action?: "open-settings" | "rescan";
 }
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as ToggleRequest;
+  if (body.action === "rescan") {
+    return Response.json(await startupReport(true));
+  }
   if (body.action === "open-settings") {
     await openLoginItemsSettings();
     return Response.json({ ok: true, needsAdmin: false, message: "" });

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { homedir, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import type { ProcessGroup, StartupItem, StartupKind, StartupReport, StartupToggleResult } from "../types";
@@ -19,7 +19,7 @@ import { sampler } from "./sampler";
 
 const UID = userInfo().uid;
 const STATE_FILE = join(homedir(), "Library", "Application Support", "Systo", "startup.json");
-const BTM_TTL = 120_000;
+const BTM_FILE = join(homedir(), "Library", "Application Support", "Systo", "startup-helpers.json");
 
 interface SavedLoginItem {
   name: string;
@@ -124,18 +124,39 @@ function fileUrlToPath(url: string) {
   }
 }
 
-let btmCache: { at: number; records: Promise<BtmRecord[]> } | null = null;
+let btmCache: Promise<BtmRecord[]> | null = null;
+let btmScan: Promise<BtmRecord[]> | null = null;
 
 function btm(force = false): Promise<BtmRecord[]> {
-  if (!btmCache || force || Date.now() - btmCache.at > BTM_TTL) {
-    // sfltool never finishes writing to a pipe, so it dumps into a file instead.
-    const file = join(tmpdir(), `systo-btm-${process.pid}.txt`);
-    const records = run("/bin/sh", ["-c", '/usr/bin/sfltool dumpbtm > "$1" 2>/dev/null </dev/null', "sh", file], 30000)
-      .then(() => parseBtm(readFileSync(file, "utf8")))
-      .catch(() => []);
-    btmCache = { at: Date.now(), records };
+  if (!btmCache) {
+    try {
+      const saved = JSON.parse(readFileSync(BTM_FILE, "utf8"));
+      btmCache = Promise.resolve(Array.isArray(saved) ? saved : []);
+    } catch {
+      btmCache = Promise.resolve([]);
+    }
   }
-  return btmCache.records;
+  // Inventory discovery may prompt on macOS. Only an explicit rescan runs it;
+  // polling and toggles read current launchctl overrides without rediscovery.
+  if (!force) return btmCache;
+  if (btmScan) return btmScan;
+  const previous = btmCache;
+  const file = join(tmpdir(), `systo-btm-${process.pid}.txt`);
+  btmScan = run("/bin/sh", ["-c", '/usr/bin/sfltool dumpbtm > "$1" 2>/dev/null </dev/null', "sh", file], 30000)
+    .then(async ({ code }) => {
+      if (code !== 0) return previous;
+      const records = parseBtm(readFileSync(file, "utf8"));
+      mkdirSync(join(BTM_FILE, ".."), { recursive: true });
+      writeFileSync(BTM_FILE, JSON.stringify(records));
+      btmCache = Promise.resolve(records);
+      return records;
+    })
+    .catch(() => previous)
+    .finally(() => {
+      try { unlinkSync(file); } catch { /* already removed */ }
+      btmScan = null;
+    });
+  return btmScan;
 }
 
 // ── launchd ────────────────────────────────────────────────────────────────────────────────
@@ -474,7 +495,6 @@ end run`;
       state.disabledLoginItems.push({ name: item.name, path: item.path, hidden: item.hidden, at: Date.now() });
       saveState(state);
     }
-    btmCache = null;
     return { ok: true, needsAdmin: false, message: `${item.name} won't open at login.` };
   }
   const saved = state.disabledLoginItems.find((s) => s.path === path);
@@ -486,11 +506,10 @@ end run`;
   if (code !== 0) return { ok: false, needsAdmin: false, message: stderr.trim() || "System Events refused the change." };
   state.disabledLoginItems = state.disabledLoginItems.filter((s) => s.path !== path);
   saveState(state);
-  btmCache = null;
   return { ok: true, needsAdmin: false, message: `${saved?.name ?? "The app"} will open at login.` };
 }
 
-/** The BTM dump takes a few seconds, so read it ahead of the first visit to Startup. */
+/** Warm the saved inventory without invoking permission-sensitive discovery. */
 export function warmStartup() {
   void btm();
 }

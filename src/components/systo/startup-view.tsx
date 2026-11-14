@@ -210,12 +210,12 @@ function Summary({ items }: { items: StartupItem[] }) {
 export function StartupView() {
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [rescanning, setRescanning] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [pending, setPending] = useState<Set<string>>(new Set());
   const [adminFor, setAdminFor] = useState<{ item: StartupItem; enabled: boolean } | null>(null);
   const { settings } = useSettings();
-  const { data, error, refresh } = usePoll<StartupReport>(`/api/startup${refreshKey ? `?refresh=${refreshKey}` : ""}`, 20000);
+  const { data, error, refresh } = usePoll<StartupReport>("/api/startup", 20000);
 
   const items = useMemo(() => (data?.items ?? []).map((i) => (i.id in overrides ? { ...i, enabled: overrides[i.id] } : i)), [data, overrides]);
   const visible = useMemo(() => {
@@ -270,9 +270,20 @@ export function StartupView() {
           <ToggleGroupItem value="system" className="h-8 px-3 text-[12px]">System</ToggleGroupItem>
         </ToggleGroup>
         <div className="flex-1" />
+        <Button variant="ghost" size="sm" disabled={rescanning} onClick={async () => {
+          setRescanning(true);
+          try {
+            const response = await fetch("/api/startup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "rescan" }) });
+            if (!response.ok) throw new Error("Could not rescan helpers");
+            refresh();
+          } catch { toast.error("Could not rescan helpers"); }
+          finally { setRescanning(false); }
+        }} title="Discover registered helpers. macOS may ask for permission.">
+          {rescanning ? "Scanning…" : "Rescan helpers"}
+        </Button>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-8" onClick={() => setRefreshKey(Date.now())} aria-label="Reload startup items">
+            <Button variant="ghost" size="icon" className="size-8" onClick={refresh} aria-label="Reload startup items">
               <RefreshCwIcon className="size-4" />
             </Button>
           </TooltipTrigger>
