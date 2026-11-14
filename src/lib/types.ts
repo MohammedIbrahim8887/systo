@@ -193,6 +193,47 @@ export interface UsageReport {
   };
 }
 
+export type StartupKind = "login-item" | "login-helper" | "agent" | "daemon";
+
+export interface StartupItem {
+  id: string;
+  kind: StartupKind;
+  name: string;
+  /** launchd label, when the item is a launchd job. */
+  label?: string;
+  developer?: string;
+  /** The app the item belongs to, for its icon and grouping. */
+  appName?: string;
+  bundlePath?: string;
+  hasIcon: boolean;
+  program?: string;
+  plistPath?: string;
+  /** "At login", "Always running", "Every 15 min"… */
+  schedule: string;
+  enabled: boolean;
+  /** Turned off under "Allow in the Background" in System Settings, which only Settings can undo. */
+  blockedBySettings: boolean;
+  needsAdmin: boolean;
+  running: boolean;
+  pids: number[];
+  memory: number;
+  cpu: number;
+  impact: "high" | "medium" | "low" | "none";
+}
+
+export interface StartupReport {
+  items: StartupItem[];
+  /** False when System Events access was denied, so "Open at Login" comes from the BTM database. */
+  loginItemsReadable: boolean;
+  at: number;
+}
+
+export interface StartupToggleResult {
+  ok: boolean;
+  needsAdmin: boolean;
+  message: string;
+}
+
 export type KillMode = "quit" | "terminate" | "force";
 
 export interface KillResult {

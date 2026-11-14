@@ -11,6 +11,8 @@ import type { GET as GET_icon } from "../app/api/icon/route";
 import type { GET as GET_island } from "../app/api/island/route";
 import type { POST as POST_reveal } from "../app/api/reveal/route";
 import type { GET as GET_snapshot } from "../app/api/snapshot/route";
+import type { GET as GET_startup } from "../app/api/startup/route";
+import type { POST as POST_startup } from "../app/api/startup/route";
 import type { GET as GET_system } from "../app/api/system/route";
 import type { GET as GET_usage } from "../app/api/usage/route";
 
@@ -33,6 +35,10 @@ export type APIRouter = {
   };
   snapshot: {
     get: typeof GET_snapshot;
+  };
+  startup: {
+    get: typeof GET_startup;
+    post: typeof POST_startup;
   };
   system: {
     get: typeof GET_system;
@@ -67,6 +73,10 @@ export const apiRoutes = [
   {
     path: "/api/snapshot",
     methods: ["GET"],
+  },
+  {
+    path: "/api/startup",
+    methods: ["GET", "POST"],
   },
   {
     path: "/api/system",
