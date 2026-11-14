@@ -72,8 +72,21 @@ final class Installer: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         }
     }
     func confirmAndInstall() {
-        if !NSRunningApplication.runningApplications(withBundleIdentifier: "dev.systo.monitor").isEmpty {
-            state("error", "Quit Systo before installing, then try again.")
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: "dev.systo.monitor")
+        if !running.isEmpty {
+            let alert = NSAlert()
+            alert.messageText = "Systo is still running"
+            alert.informativeText = "Systo needs to quit before it can be replaced. Your settings and history are kept."
+            alert.addButton(withTitle: "Quit Systo and Install")
+            alert.addButton(withTitle: "Cancel")
+            alert.beginSheetModal(for: window) { response in
+                guard response == .alertFirstButtonReturn else { return }
+                self.state("installing", "Quitting Systo…")
+                self.quit(running) { stopped in
+                    if stopped { self.confirmAndInstall() }
+                    else { self.state("error", "Systo didn't quit. Quit it from the menu bar, then try again.") }
+                }
+            }
             return
         }
         let target = directory.appendingPathComponent("Systo.app")
@@ -87,6 +100,19 @@ final class Installer: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
                 if response == .alertFirstButtonReturn { self.performInstall() }
             }
         } else { performInstall() }
+    }
+    /// Asks each instance to quit, then force-quits any that remain (a windowless launcher can ignore a polite quit).
+    func quit(_ apps: [NSRunningApplication], completion: @escaping (Bool) -> Void) {
+        apps.forEach { $0.terminate() }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let deadline = Date().addingTimeInterval(4)
+            while Date() < deadline, apps.contains(where: { !$0.isTerminated }) { Thread.sleep(forTimeInterval: 0.2) }
+            apps.filter { !$0.isTerminated }.forEach { $0.forceTerminate() }
+            let forced = Date().addingTimeInterval(2)
+            while Date() < forced, apps.contains(where: { !$0.isTerminated }) { Thread.sleep(forTimeInterval: 0.2) }
+            let stopped = apps.allSatisfy { $0.isTerminated }
+            DispatchQueue.main.async { completion(stopped) }
+        }
     }
     func performInstall() {
         guard let source = Bundle.main.resourceURL?.appendingPathComponent("Systo.app") else { return }

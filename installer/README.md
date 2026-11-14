@@ -8,7 +8,7 @@ Outputs:
 
 The build targets the host architecture. It requires macOS, Xcode command-line tools, and the project dependencies. The native AppKit wrapper loads an offline HTML view through WKWebView and bundles the production Systo app. No server or network connection is required by the installer.
 
-The default destination is `/Applications`; Change lets the user choose another writable directory. Existing installations require confirmation. Copying uses a temporary directory on the destination volume, retaining the old app until replacement succeeds. Running Systo must be quit before installation. Settings are outside the app bundle and are retained. Open Systo launches the installed copy.
+The default destination is `/Applications`; Change lets the user choose another writable directory. Existing installations require confirmation. Copying uses a temporary directory on the destination volume, retaining the old app until replacement succeeds. If Systo is running, the installer offers to quit it (force-quitting a leftover instance that ignores the request). Settings are outside the app bundle and are retained. Open Systo launches the installed copy.
 
 The build uses an ad-hoc signature for local use. Developer ID signing and Apple notarization are not configured; those are required before distributing a trusted download publicly.
 
