@@ -70,7 +70,7 @@ jobs:
           }
           # Get the runner's console out of the way so the screenshots show the app.
           (New-Object -ComObject Shell.Application).MinimizeAll()
-          Start-Process -FilePath release/Systo-Setup-x64.exe -ArgumentList "/SP-", "/SUPPRESSMSGBOXES"
+          Start-Process -FilePath release/Systo-Setup-x64.exe -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES"
           Start-Sleep -Seconds 20
           Shot "01-installing"
           Start-Sleep -Seconds 40
