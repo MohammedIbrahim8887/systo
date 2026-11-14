@@ -1,5 +1,6 @@
 import type { KillMode, KillResult } from "../types";
 import { run } from "./exec";
+import { endProcessesWindows, revealWindows } from "./win/actions";
 
 const PROTECTED = new Set([0, 1]);
 
@@ -16,8 +17,9 @@ async function quitApp(bundleId: string): Promise<boolean> {
 export async function endProcesses(
   pids: number[],
   mode: KillMode,
-  options: { bundleId?: string; admin?: boolean } = {},
+  options: { bundleId?: string; admin?: boolean; windowPids?: Set<number> } = {},
 ): Promise<KillResult> {
+  if (process.platform === "win32") return endProcessesWindows(pids, mode, options.admin === true, options.windowPids);
   const targets = [...new Set(pids)].filter((pid) => Number.isInteger(pid) && pid > 0);
   const failed: KillResult["failed"] = [];
   const killed: number[] = [];
@@ -84,6 +86,7 @@ export async function endProcesses(
 }
 
 export async function reveal(path: string): Promise<boolean> {
+  if (process.platform === "win32") return revealWindows(path);
   if (!path.startsWith("/")) return false;
   const { code } = await run("/usr/bin/open", ["-R", path], 4000);
   return code === 0;

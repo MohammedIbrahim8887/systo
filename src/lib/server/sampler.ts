@@ -1,5 +1,5 @@
-import { basename } from "node:path";
-import { cpus, totalmem, uptime as osUptime } from "node:os";
+import { basename, dirname } from "node:path";
+import { cpus, totalmem, uptime as osUptime, userInfo } from "node:os";
 import type {
   HistoryPoint,
   IslandData,
@@ -14,6 +14,11 @@ import { classifyProcess, bundleKind, safetyFor, sectionFor, worstSafety } from 
 import { output } from "./exec";
 import { readNative, type NativeTable } from "./native";
 import { usage } from "./usage";
+import { exeDisplayName, exeInfo } from "./win/apps";
+import { classifyWin, safetyWin } from "./win/classify";
+import { readWindows } from "./win/native";
+
+const IS_WIN = process.platform === "win32";
 
 interface PsRow {
   pid: number;
@@ -151,6 +156,8 @@ interface Counters {
   net: Map<number, { in: number; out: number }>;
   sysDisk: { read: number; write: number };
   sysNet: { in: number; out: number };
+  /** Windows: system-wide idle and busy CPU time (100ns units). */
+  sysCpu?: { idle: number; busy: number };
 }
 
 export const SELF_BUNDLE_ID = "dev.systo.monitor";
@@ -169,6 +176,8 @@ function delta(now: number, before: number | undefined): number {
 export class Sampler {
   interval = 1500;
   snapshot: Snapshot | null = null;
+  /** Windows: processes that own an app window, so Quit can leave a "save changes?" prompt alone. */
+  windowPids = new Set<number>();
   private history: HistoryPoint[] = [];
   private prev: Counters | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -237,6 +246,7 @@ export class Sampler {
   }
 
   private async sample() {
+    if (IS_WIN) return this.sampleWindows();
     const [ps, nettop, memory, sysNet, sysDisk, gpu] = await Promise.all([
       readPs(),
       readNettop().catch(() => new Map<number, { in: number; out: number }>()),
@@ -327,8 +337,32 @@ export class Sampler {
     }
 
     const groups = this.group(rows, rowByPid, native, byPid);
-
     const totalCpu = rows.reduce((sum, r) => sum + r.cpu, 0) / this.cores;
+    this.publish({ at, prev, dt, counters, groups, rows, totalCpu, memory, gpu });
+  }
+
+  private publish({
+    at,
+    prev,
+    dt,
+    counters,
+    groups,
+    rows,
+    totalCpu,
+    memory,
+    gpu,
+  }: {
+    at: number;
+    prev: Counters | null;
+    dt: number;
+    counters: Counters;
+    groups: ProcessGroup[];
+    rows: ProcessRow[];
+    totalCpu: number;
+    memory: MemoryStats;
+    gpu: number | null;
+  }) {
+    const { sysDisk, sysNet } = counters;
     const diskRead = prev && dt ? delta(sysDisk.read, prev.sysDisk.read) / dt : 0;
     const diskWrite = prev && dt ? delta(sysDisk.write, prev.sysDisk.write) / dt : 0;
     const netIn = prev && dt ? delta(sysNet.in, prev.sysNet.in) / dt : 0;
@@ -371,6 +405,163 @@ export class Sampler {
       native: this.native,
       netPeak: this.netPeak,
     };
+  }
+
+  // ── Windows ──────────────────────────────────────────────────────────────────────────────
+
+  private async sampleWindows() {
+    const win = await readWindows();
+    if (!win) throw new Error("Win32 counters are unavailable");
+    const at = Date.now();
+    const prev = this.prev;
+    const dt = prev ? Math.max(0.2, (at - prev.at) / 1000) : 0;
+    const counters: Counters = {
+      at,
+      cpu: new Map(),
+      diskRead: new Map(),
+      diskWrite: new Map(),
+      energy: new Map(),
+      net: new Map(),
+      sysDisk: { read: 0, write: 0 },
+      sysNet: { in: win.net.in, out: win.net.out },
+      sysCpu: win.cpu,
+    };
+    this.native = true;
+    this.windowPids = new Set(win.windows.keys());
+    let username = "You";
+    try {
+      username = userInfo().username;
+    } catch {
+      // keep the placeholder
+    }
+    const selfRoot = dirname(dirname(process.execPath)).toLowerCase();
+
+    const rows: ProcessRow[] = [];
+    for (const p of win.procs) {
+      counters.cpu.set(p.pid, p.cpuNs);
+      counters.diskRead.set(p.pid, p.ioRead);
+      counters.diskWrite.set(p.pid, p.ioWrite);
+      counters.sysDisk.read += p.ioRead;
+      counters.sysDisk.write += p.ioWrite;
+      const cpu = prev && dt ? (delta(p.cpuNs, prev.cpu.get(p.pid)) / (dt * 1e9)) * 100 : 0;
+      const kind = classifyWin({ pid: p.pid, exe: p.exe, path: p.path, session: p.session, hasWindow: win.windows.has(p.pid) });
+      rows.push({
+        pid: p.pid,
+        ppid: p.ppid,
+        uid: p.session === 0 ? 0 : 1000,
+        user: p.session === 0 ? "SYSTEM" : username,
+        name: p.exe,
+        path: p.path,
+        cpu: Math.min(cpu, this.cores * 100),
+        memory: p.memory,
+        diskRead: prev && dt ? delta(p.ioRead, prev.diskRead.get(p.pid)) / dt : 0,
+        diskWrite: prev && dt ? delta(p.ioWrite, prev.diskWrite.get(p.pid)) / dt : 0,
+        netIn: 0,
+        netOut: 0,
+        power: 0,
+        kind,
+        safety: safetyWin(p.exe, kind, p.session),
+        inspectable: p.readable,
+        self: p.pid === process.pid || (Boolean(p.path) && p.path.toLowerCase().startsWith(selfRoot + "\\")),
+      });
+    }
+
+    const groups = this.groupWindows(rows, win.windows);
+    let totalCpu = rows.reduce((sum, r) => sum + r.cpu, 0) / this.cores;
+    if (prev?.sysCpu) {
+      const busy = delta(win.cpu.busy, prev.sysCpu.busy);
+      const idle = delta(win.cpu.idle, prev.sysCpu.idle);
+      if (busy + idle > 0) totalCpu = (busy / (busy + idle)) * 100;
+    }
+    const m = win.memory;
+    const used = Math.max(0, m.total - m.available);
+    const memory: MemoryStats = {
+      used,
+      app: Math.max(0, used - m.kernelNonpaged - m.kernelPaged),
+      wired: m.kernelNonpaged + m.kernelPaged,
+      compressed: 0,
+      cached: m.cache,
+      swapUsed: Math.max(0, m.commit - used),
+      pressure: m.load >= 90 ? "critical" : m.load >= 80 ? "warning" : "normal",
+    };
+    this.publish({ at, prev, dt, counters, groups, rows, totalCpu, memory, gpu: null });
+  }
+
+  /**
+   * Task Manager groups by program: every process of one executable is one entry. Helpers an app
+   * starts from its own folder (or WebView2, conhost and crash reporters) join the app they came from.
+   */
+  private groupWindows(rows: ProcessRow[], windows: Map<number, string>): ProcessGroup[] {
+    const byPid = new Map(rows.map((r) => [r.pid, r]));
+    const baseKey = (r: ProcessRow) => {
+      if (r.self) return "app:systo";
+      if (r.kind === "kernel" || !r.path) return `exe:${r.uid === 0 ? "sys" : "usr"}:${r.name.toLowerCase()}`;
+      return `app:${r.path.toLowerCase()}`;
+    };
+    const HELPERS = new Set(["msedgewebview2.exe", "conhost.exe", "crashpad_handler.exe", "cefsharp.browsersubprocess.exe"]);
+    const keys = new Map<number, string>();
+    for (const r of rows) keys.set(r.pid, baseKey(r));
+    const appKeys = new Set<string>();
+    for (const r of rows) if (windows.has(r.pid)) appKeys.add(keys.get(r.pid)!);
+    for (const r of rows) {
+      if (windows.has(r.pid) || r.kind === "kernel" || r.self) continue;
+      const lower = r.path.toLowerCase();
+      let parent = byPid.get(r.ppid);
+      for (let depth = 0; parent && depth < 6; depth++) {
+        const parentKey = keys.get(parent.pid)!;
+        if (parentKey === keys.get(r.pid)) break;
+        if (appKeys.has(parentKey) || parentKey === "app:systo") {
+          const appDir = parent.path.toLowerCase().replace(/\\[^\\]+$/, "");
+          const ownDir = appDir.includes("\\windows\\") ? null : appDir;
+          if (HELPERS.has(r.name.toLowerCase()) || (ownDir && lower.startsWith(ownDir + "\\"))) {
+            keys.set(r.pid, parentKey);
+            r.kind = "helper";
+          }
+          break;
+        }
+        parent = byPid.get(parent.ppid);
+      }
+    }
+
+    const buckets = new Map<string, ProcessRow[]>();
+    for (const r of rows) {
+      const key = keys.get(r.pid)!;
+      let list = buckets.get(key);
+      if (!list) buckets.set(key, (list = []));
+      list.push(r);
+    }
+
+    const groups: ProcessGroup[] = [];
+    for (const [id, processes] of buckets) {
+      processes.sort((a, b) => a.pid - b.pid);
+      const pids = new Set(processes.map((p) => p.pid));
+      const head =
+        processes.find((p) => windows.has(p.pid) && p.kind !== "helper") ??
+        processes.find((p) => p.kind !== "helper" && !pids.has(p.ppid)) ??
+        processes.find((p) => p.kind !== "helper") ??
+        processes[0];
+      const kind = head.kind === "helper" ? "menu-bar" : head.kind;
+      const self = id === "app:systo";
+      const info = head.path ? exeInfo(head.path) : undefined;
+      groups.push({
+        id,
+        name: self ? "Systo" : kind === "kernel" ? head.name.replace(/\.exe$/i, "") : exeDisplayName(head.path, head.name),
+        section: sectionFor(kind),
+        kind,
+        safety: kind === "app" || kind === "menu-bar" ? (processes.some((p) => p.safety === "critical") ? "critical" : head.safety) : worstSafety(processes.map((p) => p.safety)),
+        bundlePath: head.path || undefined,
+        hasIcon: Boolean(head.path) && (info ? Boolean(info.icon) : true),
+        user: head.user,
+        headPid: head.pid,
+        processes,
+        cpu: processes.reduce((s, p) => s + p.cpu, 0),
+        memory: processes.reduce((s, p) => s + p.memory, 0),
+        disk: processes.reduce((s, p) => s + p.diskRead + p.diskWrite, 0),
+        network: 0,
+        self,
+      });
+    }
+    return groups;
   }
 
   private group(

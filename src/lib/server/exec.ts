@@ -6,12 +6,19 @@ export interface ExecResult {
   code: number;
 }
 
-export function run(file: string, args: string[], timeout = 8000): Promise<ExecResult> {
+export function run(file: string, args: string[], timeout = 8000, env: Record<string, string> = {}): Promise<ExecResult> {
   return new Promise((resolve) => {
     execFile(
       file,
       args,
-      { timeout, maxBuffer: 32 * 1024 * 1024, encoding: "utf8", env: { ...process.env, LC_ALL: "C" } },
+      {
+        timeout,
+        maxBuffer: 32 * 1024 * 1024,
+        encoding: "utf8",
+        env: { ...process.env, LC_ALL: "C", ...env },
+        // No console window flashing up on Windows for every helper command.
+        windowsHide: true,
+      },
       (error, stdout, stderr) => {
         const code = error ? (typeof (error as { code?: unknown }).code === "number" ? (error as { code: number }).code : 1) : 0;
         resolve({ stdout: stdout ?? "", stderr: stderr ?? "", code });

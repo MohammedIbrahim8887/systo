@@ -1,6 +1,7 @@
 import { cpus, hostname, totalmem } from "node:os";
 import type { SystemInfo } from "../types";
 import { output } from "./exec";
+import { storageWindows, systemInfoWindows } from "./win/system";
 
 let cached: { at: number; info: SystemInfo } | null = null;
 
@@ -10,6 +11,11 @@ async function readOne(name: string): Promise<string> {
 
 export async function systemInfo(): Promise<SystemInfo> {
   if (cached && Date.now() - cached.at < 60_000) return cached.info;
+  if (process.platform === "win32") {
+    const info = await systemInfoWindows();
+    cached = { at: Date.now(), info };
+    return info;
+  }
   const [brand, model, perf0, perf1, boot, sw, df, gpu] = await Promise.all([
     readOne("machdep.cpu.brand_string"),
     readOne("hw.model"),
@@ -55,6 +61,11 @@ let storageCache: { at: number; value: { used: number; total: number } } | null 
 /** Space on the data volume, which is what Finder reports as used on Macintosh HD. */
 export async function storageUsage(): Promise<{ used: number; total: number }> {
   if (storageCache && Date.now() - storageCache.at < 30_000) return storageCache.value;
+  if (process.platform === "win32") {
+    const value = await storageWindows();
+    storageCache = { at: Date.now(), value };
+    return value;
+  }
   const df = await output("/bin/df", ["-k", "/System/Volumes/Data"]);
   const cells = df.trim().split("\n")[1]?.split(/\s+/) ?? [];
   const total = Number(cells[1] ?? 0) * 1024;

@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     pids = group.processes.filter((p) => !p.self).map((p) => p.pid);
     if (group.kind === "app" || group.kind === "system-app" || group.kind === "menu-bar") bundleId = group.bundleId;
   }
-  const result = await endProcesses(pids, mode, { bundleId, admin: body.admin === true });
+  const result = await endProcesses(pids, mode, { bundleId, admin: body.admin === true, windowPids: sampler().windowPids });
   setTimeout(() => void sampler().refresh(), 350);
   return Response.json(result);
 }

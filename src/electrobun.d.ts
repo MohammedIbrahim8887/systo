@@ -91,10 +91,17 @@ declare module "electrobun/main" {
 }
 
 declare module "bun:ffi" {
-  type FFIType = "ptr" | "i32" | "u32" | "i64" | "u64" | "f64" | "bool" | "void" | "cstring";
+  type FFIType = "ptr" | "i32" | "u32" | "i64" | "u64" | "u8" | "f64" | "bool" | "void" | "cstring";
   export function dlopen<T extends Record<string, { args: FFIType[]; returns: FFIType }>>(
     path: string,
     symbols: T,
   ): { symbols: { [K in keyof T]: (...args: any[]) => any }; close(): void };
-  export function ptr(view: ArrayBufferView | ArrayBufferLike): number;
+  export function ptr(view: ArrayBufferView | ArrayBufferLike, byteOffset?: number): number;
+  export function toArrayBuffer(pointer: number, byteOffset?: number, byteLength?: number): ArrayBuffer;
+  export const read: {
+    u8(pointer: number, byteOffset?: number): number;
+    u32(pointer: number, byteOffset?: number): number;
+    u64(pointer: number, byteOffset?: number): bigint;
+    ptr(pointer: number, byteOffset?: number): number;
+  };
 }
