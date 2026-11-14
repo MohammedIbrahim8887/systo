@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { ActivityIcon, HistoryIcon, ListTreeIcon, PowerIcon, SettingsIcon, type LucideIcon } from "lucide-react";
+import { ActivityIcon, HardDriveIcon, HistoryIcon, ListTreeIcon, PowerIcon, SettingsIcon, type LucideIcon } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Kbd } from "@/components/ui/kbd";
@@ -17,11 +17,12 @@ import { Logo } from "./logo";
 import { PerformanceView } from "./performance-view";
 import { ProcessesView } from "./processes-view";
 import { SettingsDialog } from "./settings-dialog";
+import { DiskView } from "./disk-view";
 import { StartupView } from "./startup-view";
 
-type View = "processes" | "performance" | "history" | "startup";
+type View = "processes" | "performance" | "history" | "startup" | "disk";
 
-const SHORTCUTS: Record<string, View> = { "1": "processes", "2": "performance", "3": "history", "4": "startup" };
+const SHORTCUTS: Record<string, View> = { "1": "processes", "2": "performance", "3": "history", "4": "startup", "5": "disk" };
 
 function NavItem({
   icon: Icon,
@@ -114,6 +115,7 @@ function Shell() {
             <NavItem icon={ActivityIcon} label="Performance" active={view === "performance"} onClick={() => setView("performance")} shortcut="⌘2" />
             <NavItem icon={HistoryIcon} label="History" active={view === "history"} onClick={() => setView("history")} shortcut="⌘3" />
             <NavItem icon={PowerIcon} label="Startup" active={view === "startup"} onClick={() => setView("startup")} shortcut="⌘4" />
+            <NavItem icon={HardDriveIcon} label="Disk" active={view === "disk"} onClick={() => setView("disk")} shortcut="⌘5" />
           </nav>
 
           <div className="mt-auto space-y-3 px-4 pb-3">
@@ -135,6 +137,7 @@ function Shell() {
           {view === "performance" && <PerformanceView snapshot={snapshot} />}
           {view === "history" && <HistoryView />}
           {view === "startup" && <StartupView />}
+          {view === "disk" && <DiskView />}
         </main>
       </div>
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
