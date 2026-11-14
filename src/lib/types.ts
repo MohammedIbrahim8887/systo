@@ -238,6 +238,60 @@ export interface StartupToggleResult {
   message: string;
 }
 
+export type DiskItemKind = "file" | "folder" | "package" | "rest";
+
+export interface DiskViewNode {
+  name: string;
+  size: number;
+  files: number;
+  kind: DiskItemKind;
+  /** Absolute path; absent for the aggregate of small items. */
+  path?: string;
+  /** For .app packages, so the UI can show the real icon. */
+  bundlePath?: string;
+  children?: DiskViewNode[];
+  hasChildren: boolean;
+}
+
+export interface DiskScanState {
+  status: "idle" | "scanning" | "done" | "error";
+  root?: string;
+  label?: string;
+  startedAt?: number;
+  finishedAt?: number;
+  progress: { files: number; dirs: number; bytes: number; current: string };
+  error?: string;
+  stats?: { files: number; dirs: number; bytes: number; denied: number; ms: number };
+}
+
+export interface DiskSuggestion {
+  id: string;
+  title: string;
+  description: string;
+  path?: string;
+  size: number;
+  count?: number;
+  /** Rebuilt automatically or re-downloadable, so removing it loses nothing permanent. */
+  safe: boolean;
+  items?: Array<{ path: string; size: number }>;
+}
+
+export interface DiskReport {
+  state: DiskScanState;
+  volume: { used: number; total: number };
+  home: string;
+  view?: {
+    /** Absolute path of the folder being viewed, and the trail from the scan root. */
+    path: string;
+    display: string;
+    crumbs: Array<{ name: string; path: string }>;
+    node: DiskViewNode;
+  };
+  topFiles?: Array<{ path: string; size: number }>;
+  categories?: Array<{ id: string; size: number; count: number }>;
+  suggestions?: DiskSuggestion[];
+}
+
 export type KillMode = "quit" | "terminate" | "force";
 
 export interface KillResult {

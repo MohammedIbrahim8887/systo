@@ -132,6 +132,14 @@ function findBun(): string | null {
   return found ? found : null;
 }
 
+let bunPath: string | null | undefined;
+
+/** A bun binary for FFI workers: our own runtime under Bun, otherwise one on the PATH. */
+export function bunExecutable(): string | null {
+  if (bunPath === undefined) bunPath = (globalThis as { Bun?: unknown }).Bun ? process.execPath : findBun();
+  return bunPath;
+}
+
 async function createReader(): Promise<Reader | null> {
   if (process.platform !== "darwin") return null;
   const bun = (globalThis as { Bun?: unknown }).Bun;
@@ -145,8 +153,8 @@ async function createReader(): Promise<Reader | null> {
       return null;
     }
   }
-  const bunPath = findBun();
-  return bunPath ? new WorkerReader(bunPath).read : null;
+  const binary = bunExecutable();
+  return binary ? new WorkerReader(binary).read : null;
 }
 
 export async function readNative(pids: number[]): Promise<NativeTable | null> {
