@@ -49,3 +49,17 @@ async function friendlyModel(identifier: string): Promise<string> {
   const name = /Model Name:\s*(.+)/.exec(text)?.[1]?.trim();
   return name ? name : identifier;
 }
+
+let storageCache: { at: number; value: { used: number; total: number } } | null = null;
+
+/** Space on the data volume, which is what Finder reports as used on Macintosh HD. */
+export async function storageUsage(): Promise<{ used: number; total: number }> {
+  if (storageCache && Date.now() - storageCache.at < 30_000) return storageCache.value;
+  const df = await output("/bin/df", ["-k", "/System/Volumes/Data"]);
+  const cells = df.trim().split("\n")[1]?.split(/\s+/) ?? [];
+  const total = Number(cells[1] ?? 0) * 1024;
+  const free = Number(cells[3] ?? 0) * 1024;
+  const value = { used: Math.max(0, total - free), total };
+  storageCache = { at: Date.now(), value };
+  return value;
+}

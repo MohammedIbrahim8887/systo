@@ -3,7 +3,7 @@ import { makeOverlay, notchScreen, orderFront, setClickThrough, setFrame, type S
 
 const WINDOW_WIDTH = 460;
 const PANEL_WIDTH = 440;
-const PANEL_EXTRA_HEIGHT = 200;
+const PANEL_EXTRA_HEIGHT = 262;
 const WING = 62;
 const HOVER_DWELL_MS = 90;
 const LEAVE_GRACE_MS = 320;

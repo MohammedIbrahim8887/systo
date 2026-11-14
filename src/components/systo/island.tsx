@@ -26,6 +26,51 @@ const METRICS: Array<{ id: Metric; icon: LucideIcon }> = [
 
 const METRIC_KEY = "systo:island-metric";
 
+/** Expanded panel height below the notch; keep in sync with PANEL_EXTRA_HEIGHT in shell/island.ts. */
+const ISLAND_PANEL_HEIGHT = 262;
+
+const RING_LABEL: Record<Metric, string> = { cpu: "CPU", memory: "RAM", disk: "SSD", network: "NET" };
+
+function Ring({ value, size, stroke, children }: { value: number; size: number; stroke: number; children?: React.ReactNode }) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const clamped = Math.max(0, Math.min(100, value));
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeOpacity={0.14} strokeWidth={stroke} />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - clamped / 100)}
+          style={{ transition: "stroke-dashoffset 700ms cubic-bezier(0.3, 0.9, 0.3, 1)" }}
+        />
+      </svg>
+      {children && <div className="absolute inset-0 flex items-center justify-center">{children}</div>}
+    </div>
+  );
+}
+
+function ringDetail(metric: Metric, data: IslandData) {
+  const t = data.totals;
+  switch (metric) {
+    case "cpu":
+      return `${t.cores} cores`;
+    case "memory":
+      return formatBytes(t.memoryUsed, 0);
+    case "disk":
+      return `${formatBytes(Math.max(0, data.storage.total - data.storage.used), 0)} free`;
+    case "network":
+      return `${compactRate(t.netIn + t.netOut)}/s`;
+  }
+}
+
 function compactRate(bytes: number) {
   if (bytes < 1024) return `${Math.round(bytes)}B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}K`;
@@ -101,7 +146,7 @@ export function Island({ params = {} }: { params?: IslandParams }) {
   const wing = 62;
   const collapsedWidth = notchWidth > 0 ? notchWidth + wing * 2 : 220;
   const expandedWidth = Math.min(geometry.width - 20, 440);
-  const expandedHeight = notchHeight + 200;
+  const expandedHeight = notchHeight + ISLAND_PANEL_HEIGHT;
   const top = data?.entries[0];
   const cores = data?.totals.cores ?? 1;
   const ActiveIcon = useMemo(() => METRICS.find((m) => m.id === metric)!.icon, [metric]);
@@ -147,8 +192,12 @@ export function Island({ params = {} }: { params?: IslandParams }) {
               <Logo className="size-[15px] text-white" />
             )}
           </div>
-          <div className="flex items-center gap-1 text-[11.5px] font-medium tabular text-white/90">
-            <ActiveIcon className="size-3 text-white/50" strokeWidth={2} />
+          <div className="flex items-center gap-1.5 text-[11.5px] font-medium tabular text-white/90">
+            {data && (metric === "cpu" || metric === "memory") ? (
+              <Ring value={data.overview[metric]} size={14} stroke={2.2} />
+            ) : (
+              <ActiveIcon className="size-3 text-white/50" strokeWidth={2} />
+            )}
             {data ? totalLabel(data) : "–"}
           </div>
         </div>
@@ -175,24 +224,34 @@ export function Island({ params = {} }: { params?: IslandParams }) {
             </div>
           </div>
 
-          <div className="mt-2 grid shrink-0 grid-cols-4 gap-1 rounded-full bg-white/[0.07] p-[3px]">
-            {METRICS.map(({ id, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => chooseMetric(id)}
-                className={cn(
-                  "flex h-6 items-center justify-center gap-1 rounded-full text-[11px] font-medium transition-colors",
-                  metric === id ? "bg-white text-black" : "text-white/60 hover:bg-white/10 hover:text-white",
-                )}
-              >
-                <Icon className="size-3" strokeWidth={2.2} />
-                {METRIC_META[id].short}
-              </button>
-            ))}
+          <div className="mt-1.5 grid shrink-0 grid-cols-4 gap-1" role="tablist" aria-label="Top apps by">
+            {METRICS.map(({ id }) => {
+              const value = data?.overview[id] ?? 0;
+              const selected = metric === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  aria-label={`${METRIC_META[id].label} ${Math.round(value)}%`}
+                  onClick={() => chooseMetric(id)}
+                  className={cn(
+                    "flex flex-col items-center gap-1 rounded-2xl py-2 transition-colors",
+                    selected ? "bg-white/[0.1] text-white" : "text-white/75 hover:bg-white/[0.05] hover:text-white",
+                  )}
+                >
+                  <Ring value={data ? value : 0} size={46} stroke={4}>
+                    <span className="text-[11.5px] font-semibold tabular text-white">{data ? `${Math.round(value)}%` : "–"}</span>
+                  </Ring>
+                  <span className={cn("text-[10px] font-semibold tracking-[0.08em]", selected ? "text-white" : "text-white/55")}>{RING_LABEL[id]}</span>
+                  <span className="max-w-full truncate px-1 text-[9.5px] tabular text-white/40">{data ? ringDetail(id, data) : "\u00a0"}</span>
+                </button>
+              );
+            })}
           </div>
 
-          <ol className="mt-3 min-h-0 flex-1 space-y-1.5">
+          <ol className="mt-2.5 min-h-0 flex-1 space-y-1.5">
             {(data?.entries ?? []).map((entry, index) => (
               <li key={entry.id} className="group/row flex h-[30px] items-center gap-2.5">
                 <span className="w-3 shrink-0 text-center text-[10px] tabular text-white/35">{index + 1}</span>

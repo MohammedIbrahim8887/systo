@@ -158,6 +158,8 @@ const HISTORY = 120;
 const IDLE_STOP_MS = 15000;
 /** Cadence while nothing is polling but usage history is being recorded. */
 const BACKGROUND_MS = 10000;
+/** 100 Mbit/s: below this, a quiet link would read as fully busy. */
+const NET_FLOOR = 12.5 * 1024 * 1024;
 
 function delta(now: number, before: number | undefined): number {
   if (before === undefined) return 0;
@@ -175,7 +177,7 @@ export class Sampler {
   private native = false;
   private cores = cpus().length || 1;
   private background = false;
-  private netPeak = 1024 * 1024;
+  private netPeak = NET_FLOOR;
 
   /** Keeps sampling with no UI attached so usage history covers the whole session. */
   runInBackground() {
@@ -355,7 +357,7 @@ export class Sampler {
     if (prev) {
       usage().record(groups, totals, dt, at);
       // Network has no fixed ceiling, so the island's percentage is against a slowly decaying peak.
-      this.netPeak = Math.max(netIn + netOut, this.netPeak * 0.995, 1024 * 1024);
+      this.netPeak = Math.max(netIn + netOut, this.netPeak * 0.999, NET_FLOOR);
       this.history.push({ t: at, cpu: totals.cpu, memory: memory.used, diskRead, diskWrite, netIn, netOut, gpu });
       if (this.history.length > HISTORY) this.history.splice(0, this.history.length - HISTORY);
     }
@@ -509,7 +511,7 @@ export function metricValue(group: ProcessGroup, metric: Metric): number {
   }
 }
 
-export function islandData(snapshot: Snapshot, metric: Metric, count = 3): IslandData {
+export function islandData(snapshot: Snapshot, metric: Metric, storage: { used: number; total: number }, count = 3): IslandData {
   const { totals } = snapshot;
   const sorted = snapshot.groups
     .filter((g) => !(metric === "cpu" && g.kind === "kernel"))
@@ -549,5 +551,13 @@ export function islandData(snapshot: Snapshot, metric: Metric, count = 3): Islan
       netIn: totals.netIn,
       netOut: totals.netOut,
     },
+    overview: {
+      cpu: totals.cpu,
+      memory: totals.memoryTotal ? (totals.memoryUsed / totals.memoryTotal) * 100 : 0,
+      disk: storage.total ? (storage.used / storage.total) * 100 : 0,
+      network: Math.min(100, ((totals.netIn + totals.netOut) / Math.max(1, snapshot.netPeak)) * 100),
+    },
+    storage,
+    netPeak: snapshot.netPeak,
   };
 }

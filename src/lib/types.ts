@@ -120,6 +120,10 @@ export interface IslandData {
   total: number;
   entries: IslandEntry[];
   totals: Pick<SystemTotals, "cpu" | "cores" | "memoryUsed" | "memoryTotal" | "diskRead" | "diskWrite" | "netIn" | "netOut">;
+  /** Percentages for the overview rings: chip load, RAM in use, storage used, network against its recent peak. */
+  overview: Record<Metric, number>;
+  storage: { used: number; total: number };
+  netPeak: number;
 }
 
 export interface SystemInfo {
