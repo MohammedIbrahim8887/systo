@@ -1,59 +1,42 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-14T13:56:17.189480+00:00",
+  "generatedAt": "2026-11-14T20:50:20.964251+00:00",
   "title": "Design System: Systo",
   "extensions": {
-    "shadows": [
-      {
-        "name": "preview-island",
-        "value": "0 8px 14px #0002",
-        "purpose": "Floating island in the installer illustration only."
-      }
-    ],
-    "motion": [
-      {
-        "name": "installer-action",
-        "value": "background .16s,transform .16s",
-        "purpose": "Button hover and press response."
-      },
-      {
-        "name": "installer-busy",
-        "value": "spin 1s linear infinite",
-        "purpose": "Indeterminate copying indicator; disabled for reduced motion."
-      }
-    ],
+    "shadows": [],
+    "motion": [],
     "breakpoints": [
       {
         "name": "installer-compact",
-        "value": "650px"
+        "value": "700px"
       }
     ]
   },
   "components": [
     {
-      "name": "Installer Primary",
+      "name": "Installation Tile",
       "kind": "button",
-      "refersTo": "installer-primary",
-      "description": "Installation action with visible keyboard focus.",
-      "html": "<button class=\"ds-install\">Install Systo</button>",
-      "css": ".ds-install{font-family:Geist,-apple-system,BlinkMacSystemFont,sans-serif;background:#111;color:#fff;border:0;border-radius:15px;min-height:58px;width:330px;max-width:100%;font-size:21px;font-weight:600;letter-spacing:-.02em;cursor:pointer;transition:background .16s,transform .16s}.ds-install:hover{background:#303030}.ds-install:active{transform:translateY(1px)}.ds-install:focus-visible{outline:3px solid #777;outline-offset:4px}.ds-install:disabled{cursor:wait;background:#414141;color:#eee}@media(prefers-reduced-motion:reduce){.ds-install{transition:none}}"
+      "refersTo": "installer-tile",
+      "description": "Click-accessible installation tile; the shipped surface adds its Core or native folder image.",
+      "html": "<button class=\"ds-tile\">Systo</button>",
+      "css": ".ds-tile{font-family:Geist,-apple-system,BlinkMacSystemFont,sans-serif;border:0;background:none;color:#111;cursor:pointer;padding:0;width:220px;border-radius:16px;font-size:25px;font-weight:620;letter-spacing:-.02em}.ds-tile:hover{background:#f7f7f7}.ds-tile:focus-visible{outline:3px solid #777;outline-offset:4px}.ds-tile:disabled{cursor:default;opacity:.55}"
     },
     {
       "name": "Destination Action",
       "kind": "button",
-      "description": "Secondary native folder picker trigger.",
-      "html": "<button class=\"ds-change\">Change\u2026</button>",
-      "css": ".ds-change{font-family:Geist,-apple-system,BlinkMacSystemFont,sans-serif;border:0;padding:4px;background:none;color:#333;text-decoration:underline;text-underline-offset:3px;cursor:pointer;font-size:12px}.ds-change:focus-visible{outline:3px solid #777;outline-offset:4px}.ds-change:disabled{opacity:.45;cursor:default}"
+      "description": "Native folder picker trigger.",
+      "html": "<button class=\"ds-change\">Change folder…</button>",
+      "css": ".ds-change{font-family:Geist,-apple-system,BlinkMacSystemFont,sans-serif;border:0;padding:4px;background:none;color:#555;text-decoration:underline;text-underline-offset:3px;cursor:pointer;font-size:12px}.ds-change:focus-visible{outline:3px solid #777;outline-offset:4px}.ds-change:disabled{opacity:.45;cursor:default}"
     }
   ],
   "narrative": {
-    "northStar": "Core identity \u00b7 Island Preview installer",
-    "overview": "Approved extension of the existing monochrome application. The installer is a local AppKit WKWebView surface with a white canvas, Core identity, a Mac notch illustration, and one installation action.",
+    "northStar": "Core identity · Quiet Install",
+    "overview": "The approved monochrome Core identity carries through the application and the installer. Quiet Install replaces the earlier Island Preview composition with a centered headline and a functional app-to-Applications transfer row in an offline AppKit WKWebView surface.",
     "keyCharacteristics": [
       "Monochrome",
       "Geist typography",
       "Native desktop shell",
-      "Explicitly illustrative preview data"
+      "Drag or click installation"
     ],
     "rules": [
       {
@@ -64,11 +47,10 @@
     ],
     "dos": [
       "Do use the approved Core asset.",
-      "Do preserve native controls and honest state feedback."
+      "Do preserve native controls, keyboard alternatives and honest state feedback."
     ],
     "donts": [
       "Do not add a colored accent.",
-      "Do not label illustrative metrics as live measurements.",
       "Do not fabricate installation percentages."
     ]
   }

@@ -19,6 +19,7 @@ mkdirSync(resources, { recursive: true });
 run('xcrun', ['swiftc', '-O', '-target', `${arch() === 'arm64' ? 'arm64' : 'x86_64'}-apple-macosx13.0`, 'installer/InstallService.swift', 'installer/main.swift', '-o', join(contents, 'MacOS', 'SystoInstaller'), '-framework', 'AppKit', '-framework', 'WebKit']);
 cpSync('installer/index.html', join(resources, 'index.html'));
 cpSync('assets/icon.png', join(resources, 'icon.png'));
+run('sips', ['-s', 'format', 'png', '/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/ApplicationsFolderIcon.icns', '--out', join(resources, 'applications.png')]);
 cpSync('node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2', join(resources, 'Geist.woff2'));
 run('/usr/bin/ditto', [payload, join(resources, 'Systo.app')]);
 // Farm’s outer launcher is linker-signed; seal the complete copied bundle.
