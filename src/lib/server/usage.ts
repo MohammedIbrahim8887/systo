@@ -1,5 +1,6 @@
+import { appDataFile } from "./paths";
 import { mkdirSync } from "node:fs";
-import { cpus, homedir } from "node:os";
+import { cpus } from "node:os";
 import { join } from "node:path";
 import type { ProcessGroup, SystemTotals, UsageEntry, UsageMetric, UsageRange, UsageReport } from "../types";
 import { openDb, type Db } from "./sqlite";
@@ -51,7 +52,7 @@ const empty = (): Acc => ({ cpu: 0, mem: 0, disk: 0, net: 0, energy: 0 });
 const COLUMNS: Record<UsageMetric, keyof Acc> = { cpu: "cpu", memory: "mem", disk: "disk", network: "net", energy: "energy" };
 
 export function usageDbPath() {
-  return join(homedir(), "Library", "Application Support", "Systo", "usage.sqlite");
+  return appDataFile("usage.sqlite");
 }
 
 class UsageStore {

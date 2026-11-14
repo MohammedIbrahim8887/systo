@@ -1,3 +1,4 @@
+import { appDataFile } from "./paths";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { homedir, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
@@ -18,8 +19,8 @@ import { sampler } from "./sampler";
  */
 
 const UID = userInfo().uid;
-const STATE_FILE = join(homedir(), "Library", "Application Support", "Systo", "startup.json");
-const BTM_FILE = join(homedir(), "Library", "Application Support", "Systo", "startup-helpers.json");
+const STATE_FILE = appDataFile("startup.json");
+const BTM_FILE = appDataFile("startup-helpers.json");
 
 interface SavedLoginItem {
   name: string;

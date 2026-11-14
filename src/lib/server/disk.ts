@@ -1,3 +1,4 @@
+import { appDataFile } from "./paths";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { cpus, homedir } from "node:os";
@@ -17,7 +18,7 @@ import { storageUsage } from "./system";
 
 const DATA_VOLUME = "/System/Volumes/Data";
 const HOME = homedir();
-const CACHE_FILE = join(HOME, "Library", "Application Support", "Systo", "disk-scan.json");
+const CACHE_FILE = appDataFile("disk-scan.json");
 const MIN_KEEP = 1024 * 1024;
 const MAX_CHILDREN = 200;
 
