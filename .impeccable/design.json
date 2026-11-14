@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-14T13:56:17.189480+00:00",
+  "title": "Design System: Systo",
+  "extensions": {
+    "shadows": [
+      {
+        "name": "preview-island",
+        "value": "0 8px 14px #0002",
+        "purpose": "Floating island in the installer illustration only."
+      }
+    ],
+    "motion": [
+      {
+        "name": "installer-action",
+        "value": "background .16s,transform .16s",
+        "purpose": "Button hover and press response."
+      },
+      {
+        "name": "installer-busy",
+        "value": "spin 1s linear infinite",
+        "purpose": "Indeterminate copying indicator; disabled for reduced motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "installer-compact",
+        "value": "650px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Installer Primary",
+      "kind": "button",
+      "refersTo": "installer-primary",
+      "description": "Installation action with visible keyboard focus.",
+      "html": "<button class=\"ds-install\">Install Systo</button>",
+      "css": ".ds-install{font-family:Geist,-apple-system,BlinkMacSystemFont,sans-serif;background:#111;color:#fff;border:0;border-radius:15px;min-height:58px;width:330px;max-width:100%;font-size:21px;font-weight:600;letter-spacing:-.02em;cursor:pointer;transition:background .16s,transform .16s}.ds-install:hover{background:#303030}.ds-install:active{transform:translateY(1px)}.ds-install:focus-visible{outline:3px solid #777;outline-offset:4px}.ds-install:disabled{cursor:wait;background:#414141;color:#eee}@media(prefers-reduced-motion:reduce){.ds-install{transition:none}}"
+    },
+    {
+      "name": "Destination Action",
+      "kind": "button",
+      "description": "Secondary native folder picker trigger.",
+      "html": "<button class=\"ds-change\">Change\u2026</button>",
+      "css": ".ds-change{font-family:Geist,-apple-system,BlinkMacSystemFont,sans-serif;border:0;padding:4px;background:none;color:#333;text-decoration:underline;text-underline-offset:3px;cursor:pointer;font-size:12px}.ds-change:focus-visible{outline:3px solid #777;outline-offset:4px}.ds-change:disabled{opacity:.45;cursor:default}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Core identity \u00b7 Island Preview installer",
+    "overview": "Approved extension of the existing monochrome application. The installer is a local AppKit WKWebView surface with a white canvas, Core identity, a Mac notch illustration, and one installation action.",
+    "keyCharacteristics": [
+      "Monochrome",
+      "Geist typography",
+      "Native desktop shell",
+      "Explicitly illustrative preview data"
+    ],
+    "rules": [
+      {
+        "name": "Preserve application identity",
+        "body": "Installer treatments do not replace existing application light and dark themes.",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "Do use the approved Core asset.",
+      "Do preserve native controls and honest state feedback."
+    ],
+    "donts": [
+      "Do not add a colored accent.",
+      "Do not label illustrative metrics as live measurements.",
+      "Do not fabricate installation percentages."
+    ]
+  }
+}

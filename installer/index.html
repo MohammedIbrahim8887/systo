@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; font-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Install Systo</title>
+<style>
+@font-face{font-family:Geist;src:url('Geist.woff2') format('woff2');font-weight:100 900;font-display:swap}
+:root{color-scheme:light;font-family:Geist,-apple-system,BlinkMacSystemFont,sans-serif;color:#111;background:#fff;font-synthesis:none;--secondary:#626262;--line:#dedede}
+*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0;-webkit-user-select:none;user-select:none}button{font:inherit}::selection{background:#222;color:#fff}
+main{max-width:1100px;margin:auto;padding:20px 42px 12px}.brand{display:flex;align-items:center;gap:12px;height:72px;font-size:36px;font-weight:620;letter-spacing:-.035em}.brand img{width:76px;height:76px;margin-left:-8px}h1{font-size:clamp(32px,4.9vw,48px);font-weight:640;line-height:1.12;letter-spacing:-.035em;margin:22px 0 34px;text-align:center;text-wrap:balance}
+.display{height:252px;position:relative;border-radius:46px 46px 0 0;padding:13px 13px 0;background:linear-gradient(125deg,#aaa,#f4f4f4 35%,#707070);overflow:hidden}.bezel{height:100%;background:#090909;border-radius:36px 36px 0 0;padding:11px 11px 0;position:relative}.screen{height:100%;overflow:hidden;position:relative;border-radius:25px 25px 0 0;background:#e9e9e9}.wallpaper{position:absolute;width:100%;height:100%;inset:0}.notch{position:absolute;left:50%;top:9px;transform:translateX(-50%);width:146px;height:25px;border-radius:0 0 18px 18px;background:#090909;z-index:2}.camera{position:absolute;width:5px;height:5px;background:#181c1f;border:1px solid #24282b;border-radius:50%;top:8px;left:calc(50% - 2px)}
+.island{position:absolute;top:34px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:20px;padding:16px 22px;white-space:nowrap;color:#fafafa;background:linear-gradient(#202020,#060606);border-radius:28px;box-shadow:0 8px 14px #0002;font-size:14px;font-weight:570;z-index:3}.metric{display:flex;align-items:center;gap:9px;font-variant-numeric:tabular-nums}.metric svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.5}.meter{width:64px;height:8px;background:#454545;border-radius:9px;overflow:hidden;margin-left:2px}.meter i{display:block;height:100%;background:#f5f5f5;border-radius:9px;width:12%}.metric.memory i{width:42%}.divider{width:1px;height:24px;background:#555}.signal{display:flex;align-items:flex-end;gap:3px;height:18px}.signal i{width:4px;background:#ccc;border-radius:2px}.signal i:nth-child(1){height:6px}.signal i:nth-child(2){height:12px}.signal i:nth-child(3){height:18px}
+.fade{position:absolute;inset:80px 0 0;background:linear-gradient(transparent,#fff 94%);z-index:4;pointer-events:none}.preview-label{position:absolute;bottom:12px;left:0;right:0;margin:0;text-align:center;font-size:11px;color:#727272;z-index:5}
+.actions{text-align:center;margin-top:3px}.tagline{font-size:23px;line-height:1.35;letter-spacing:-.02em;color:var(--secondary);margin:0 0 22px}.primary{background:#111;color:#fff;border:0;border-radius:15px;min-height:58px;width:330px;max-width:100%;font-size:21px;font-weight:600;letter-spacing:-.02em;cursor:pointer;transition:background .16s,transform .16s}.primary:hover{background:#303030}.primary:active{transform:translateY(1px)}button:focus-visible{outline:3px solid #777;outline-offset:4px}.primary:disabled{cursor:wait;background:#414141;color:#eee}.destination{display:flex;justify-content:center;align-items:center;gap:8px;font-size:12px;color:var(--secondary);margin-top:12px}.text-button{border:0;padding:4px;background:none;color:#333;text-decoration:underline;text-underline-offset:3px;cursor:pointer;font-size:12px}.text-button:disabled{opacity:.45;cursor:default}.status{font-size:13px;line-height:1.4;max-width:640px;min-height:19px;margin:8px auto 0;color:#555}.status.error{color:#242424;font-weight:550}.busy .primary::before{content:'';display:inline-block;width:15px;height:15px;border:2px solid #777;border-top-color:#fff;border-radius:50%;margin-right:10px;vertical-align:-1px;animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:650px){main{padding:18px 22px}.brand{font-size:30px;height:60px}.brand img{width:64px;height:64px}h1{margin:22px 0 28px}.display{height:220px}.island{gap:12px;padding:14px;font-size:12px}.meter{width:34px}.tagline{font-size:19px}.signal{display:none}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+<header class="brand"><img src="icon.png" alt=""><span>Systo</span></header>
+<h1>A little island. A clearer picture.</h1>
+<div class="display" role="img" aria-label="Preview of Systo’s Dynamic Island beneath a Mac notch, showing illustrative CPU and memory usage.">
+<div class="bezel"><div class="notch"><span class="camera"></span></div><div class="screen">
+<svg class="wallpaper" viewBox="0 0 900 300" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="a" x2=".7" y2="1"><stop stop-color="#c8c8c8"/><stop offset="1" stop-color="#f7f7f7"/></linearGradient><linearGradient id="b" x2="1" y2="1"><stop stop-color="#e6e6e6"/><stop offset="1" stop-color="#bdbdbd"/></linearGradient></defs><path fill="url(#a)" d="M0 0H900V300H0Z"/><path fill="url(#b)" d="M0 75C230 30 300 310 540 240S750 90 900 85V300H0Z"/><path fill="#ffffff" opacity=".38" d="M900 0C750 30 680 250 400 300H900Z"/></svg>
+<div class="island"><div class="metric"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 1v4m6-4v4M9 19v4m6-4v4M1 9h4m-4 6h4m14-6h4m-4 6h4"/></svg><span>CPU 12%</span><span class="meter"><i></i></span></div><span class="divider"></span><div class="metric memory"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="1"/><path d="M6 9v5m4-5v5m4-5v5m4-5v5M5 18v3m5-3v3m4-3v3m5-3v3"/></svg><span>Memory 42%</span><span class="meter"><i></i></span></div><span class="signal"><i></i><i></i><i></i></span></div>
+</div></div><div class="fade"></div><p class="preview-label">Dynamic Island preview · illustrative values</p>
+</div>
+<section class="actions" aria-label="Installation">
+<p class="tagline">System monitoring, always within reach.</p>
+<button class="primary" id="install" type="button">Install Systo</button>
+<div class="destination" id="destination"><span id="location">Installs to Applications</span><button class="text-button" id="choose" type="button">Change…</button></div>
+<p class="status" id="status" role="status" aria-live="polite"></p>
+</section>
+</main>
+<script>
+const install=document.getElementById('install'),choose=document.getElementById('choose'),status=document.getElementById('status');
+let currentState='ready';
+function send(action){const bridge=window.webkit?.messageHandlers?.installer;if(bridge)bridge.postMessage(action);else window.installerState('error','Open the Systo Installer app to install. This browser is a design preview.');}
+install.addEventListener('click',()=>send(currentState==='done'?'open':'install'));
+choose.addEventListener('click',()=>send('choose'));
+window.installerState=(state,message)=>{currentState=state;document.body.classList.toggle('busy',state==='installing');install.disabled=state==='installing';choose.disabled=state==='installing';install.textContent=state==='installing'?'Installing Systo…':state==='done'?'Open Systo':state==='error'?'Try Again':'Install Systo';status.textContent=message||'';status.classList.toggle('error',state==='error');document.getElementById('destination').hidden=state==='done';};
+window.installerLocation=(name)=>{document.getElementById('location').textContent='Installs to '+name;};
+</script>
+</body></html>
