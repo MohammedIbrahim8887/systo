@@ -101,6 +101,8 @@ export interface Snapshot {
   history: HistoryPoint[];
   /** False when libproc isn't available, so footprint, disk and grouping are approximations. */
   native: boolean;
+  /** Recent peak network throughput (bytes/s), the ceiling for network percentages. */
+  netPeak: number;
 }
 
 export interface IslandEntry {
@@ -151,6 +153,44 @@ export interface Explanation {
   connections: string[];
   manSummary?: string;
   searchQuery: string;
+}
+
+export type UsageRange = "1h" | "3h" | "1d" | "7d" | "30d" | "90d";
+export type UsageMetric = "cpu" | "memory" | "disk" | "network" | "energy";
+
+export interface UsageEntry {
+  id: string;
+  name: string;
+  kind: ProcessKind;
+  bundlePath?: string;
+  hasIcon: boolean;
+  /** CPU core-seconds, average bytes of memory, bytes moved, or joules. */
+  total: number;
+  /** Share of the whole Mac over the range, 0–1. */
+  share: number;
+  /** Per bucket: CPU % of the chip, average memory bytes, bytes, or average watts. */
+  series: number[];
+  lastSeen: number;
+}
+
+export interface UsageReport {
+  range: UsageRange;
+  metric: UsageMetric;
+  from: number;
+  to: number;
+  step: number;
+  buckets: number[];
+  cores: number;
+  system: number[];
+  systemTotal: number;
+  others: number[];
+  entries: UsageEntry[];
+  coverage: {
+    /** Seconds Systo was sampling within the range. */
+    recorded: number;
+    /** When recording first started, or null before the first flush. */
+    since: number | null;
+  };
 }
 
 export type KillMode = "quit" | "terminate" | "force";

@@ -13,6 +13,7 @@ import { getBundleSync, loadBundle, outermostBundle } from "./bundle";
 import { classifyProcess, bundleKind, safetyFor, sectionFor, worstSafety } from "./classify";
 import { output } from "./exec";
 import { readNative, type NativeTable } from "./native";
+import { usage } from "./usage";
 
 interface PsRow {
   pid: number;
@@ -155,6 +156,8 @@ interface Counters {
 export const SELF_BUNDLE_ID = "dev.systo.monitor";
 const HISTORY = 120;
 const IDLE_STOP_MS = 15000;
+/** Cadence while nothing is polling but usage history is being recorded. */
+const BACKGROUND_MS = 10000;
 
 function delta(now: number, before: number | undefined): number {
   if (before === undefined) return 0;
@@ -171,6 +174,14 @@ export class Sampler {
   private lastDemand = 0;
   private native = false;
   private cores = cpus().length || 1;
+  private background = false;
+  private netPeak = 1024 * 1024;
+
+  /** Keeps sampling with no UI attached so usage history covers the whole session. */
+  runInBackground() {
+    this.background = true;
+    if (!this.timer && !this.running) this.loop();
+  }
 
   setInterval(ms: number) {
     this.interval = Math.min(10000, Math.max(500, Math.round(ms)));
@@ -202,7 +213,8 @@ export class Sampler {
   private loop() {
     this.running = this.tick().finally(() => {
       this.running = null;
-      if (Date.now() - this.lastDemand > IDLE_STOP_MS) {
+      const idle = Date.now() - this.lastDemand > IDLE_STOP_MS;
+      if (idle && !this.background) {
         this.timer = null;
         this.prev = null;
         return;
@@ -210,7 +222,7 @@ export class Sampler {
       this.timer = setTimeout(() => {
         this.timer = null;
         this.loop();
-      }, this.interval);
+      }, idle ? Math.max(this.interval, BACKGROUND_MS) : this.interval);
     });
   }
 
@@ -341,6 +353,9 @@ export class Sampler {
     };
 
     if (prev) {
+      usage().record(groups, totals, dt, at);
+      // Network has no fixed ceiling, so the island's percentage is against a slowly decaying peak.
+      this.netPeak = Math.max(netIn + netOut, this.netPeak * 0.995, 1024 * 1024);
       this.history.push({ t: at, cpu: totals.cpu, memory: memory.used, diskRead, diskWrite, netIn, netOut, gpu });
       if (this.history.length > HISTORY) this.history.splice(0, this.history.length - HISTORY);
     }
@@ -352,6 +367,7 @@ export class Sampler {
       groups,
       history: this.history.slice(),
       native: this.native,
+      netPeak: this.netPeak,
     };
   }
 

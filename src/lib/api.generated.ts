@@ -12,6 +12,7 @@ import type { GET as GET_island } from "../app/api/island/route";
 import type { POST as POST_reveal } from "../app/api/reveal/route";
 import type { GET as GET_snapshot } from "../app/api/snapshot/route";
 import type { GET as GET_system } from "../app/api/system/route";
+import type { GET as GET_usage } from "../app/api/usage/route";
 
 // Type-only representation of your API routes
 export type APIRouter = {
@@ -35,6 +36,9 @@ export type APIRouter = {
   };
   system: {
     get: typeof GET_system;
+  };
+  usage: {
+    get: typeof GET_usage;
   };
 };
 
@@ -66,6 +70,10 @@ export const apiRoutes = [
   },
   {
     path: "/api/system",
+    methods: ["GET"],
+  },
+  {
+    path: "/api/usage",
     methods: ["GET"],
   },
 ] as const;
