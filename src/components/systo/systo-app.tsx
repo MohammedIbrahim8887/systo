@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { ActivityIcon, HistoryIcon, ListTreeIcon, SettingsIcon, type LucideIcon } from "lucide-react";
+import { ActivityIcon, HistoryIcon, ListTreeIcon, PowerIcon, SettingsIcon, type LucideIcon } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Kbd } from "@/components/ui/kbd";
@@ -17,10 +17,11 @@ import { Logo } from "./logo";
 import { PerformanceView } from "./performance-view";
 import { ProcessesView } from "./processes-view";
 import { SettingsDialog } from "./settings-dialog";
+import { StartupView } from "./startup-view";
 
-type View = "processes" | "performance" | "history";
+type View = "processes" | "performance" | "history" | "startup";
 
-const SHORTCUTS: Record<string, View> = { "1": "processes", "2": "performance", "3": "history" };
+const SHORTCUTS: Record<string, View> = { "1": "processes", "2": "performance", "3": "history", "4": "startup" };
 
 function NavItem({
   icon: Icon,
@@ -112,6 +113,7 @@ function Shell() {
             <NavItem icon={ListTreeIcon} label="Processes" active={view === "processes"} onClick={() => setView("processes")} shortcut="⌘1" />
             <NavItem icon={ActivityIcon} label="Performance" active={view === "performance"} onClick={() => setView("performance")} shortcut="⌘2" />
             <NavItem icon={HistoryIcon} label="History" active={view === "history"} onClick={() => setView("history")} shortcut="⌘3" />
+            <NavItem icon={PowerIcon} label="Startup" active={view === "startup"} onClick={() => setView("startup")} shortcut="⌘4" />
           </nav>
 
           <div className="mt-auto space-y-3 px-4 pb-3">
@@ -132,6 +134,7 @@ function Shell() {
           {view === "processes" && <ProcessesView snapshot={snapshot} />}
           {view === "performance" && <PerformanceView snapshot={snapshot} />}
           {view === "history" && <HistoryView />}
+          {view === "startup" && <StartupView />}
         </main>
       </div>
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
