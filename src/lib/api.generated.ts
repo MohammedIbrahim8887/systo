@@ -12,6 +12,7 @@ import type { GET as GET_explain } from "../app/api/explain/route";
 import type { GET as GET_icon } from "../app/api/icon/route";
 import type { GET as GET_island } from "../app/api/island/route";
 import type { POST as POST_reveal } from "../app/api/reveal/route";
+import type { POST as POST_shell } from "../app/api/shell/route";
 import type { GET as GET_snapshot } from "../app/api/snapshot/route";
 import type { GET as GET_startup } from "../app/api/startup/route";
 import type { POST as POST_startup } from "../app/api/startup/route";
@@ -38,6 +39,9 @@ export type APIRouter = {
   };
   reveal: {
     post: typeof POST_reveal;
+  };
+  shell: {
+    post: typeof POST_shell;
   };
   snapshot: {
     get: typeof GET_snapshot;
@@ -78,6 +82,10 @@ export const apiRoutes = [
   },
   {
     path: "/api/reveal",
+    methods: ["POST"],
+  },
+  {
+    path: "/api/shell",
     methods: ["POST"],
   },
   {

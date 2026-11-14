@@ -1,5 +1,6 @@
 "use client";
 
+import { OS, IS_WINDOWS } from "@/lib/platform";
 import type { ReactNode } from "react";
 import { useTheme } from "@farm.js/core/theme/client";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -31,7 +32,7 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
-          <DialogDescription>Saved on this Mac.</DialogDescription>
+          <DialogDescription>Saved on this {OS.device}.</DialogDescription>
         </DialogHeader>
         <div className="divide-y">
           <Row title="Update speed" hint="How often Systo samples processes.">
@@ -83,7 +84,7 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
               shell?.desktop
                 ? shell.notch
                   ? "Hover the notch to see your top 3 apps."
-                  : "No notch on this display; the island sits at the top of the menu bar."
+                  : IS_WINDOWS ? "A floating pill at the top center of your main display. It hides while something is fullscreen." : "No notch on this display; the island sits at the top of the menu bar."
                 : "Available in the desktop app."
             }
           >

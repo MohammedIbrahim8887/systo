@@ -98,6 +98,9 @@ function totalLabel(data: IslandData) {
   }
 }
 
+/** Gap above the floating (Windows) pill; keep in sync with FLOAT_TOP in shell/island-win.ts. */
+const FLOAT_TOP = 8;
+
 export type IslandParams = Record<string, string | string[] | undefined>;
 
 function readParam(params: IslandParams, name: string, fallback: number) {
@@ -111,6 +114,8 @@ export function Island({ params = {} }: { params?: IslandParams }) {
     notchHeight: readParam(params, "nh", 32),
     width: readParam(params, "w", 460),
     desktop: params.shell !== undefined,
+    /** Windows: a floating pill below the top edge instead of one hanging from a notch. */
+    floating: params.fl !== undefined,
   };
   const [expanded, setExpanded] = useState(false);
   const [metric, setMetric] = useState<Metric>("cpu");
@@ -152,7 +157,10 @@ export function Island({ params = {} }: { params?: IslandParams }) {
   const ActiveIcon = useMemo(() => METRICS.find((m) => m.id === metric)!.icon, [metric]);
 
   return (
-    <div className="pointer-events-none fixed inset-0 flex justify-center overflow-hidden select-none">
+    <div
+      className="pointer-events-none fixed inset-0 flex justify-center overflow-hidden select-none"
+      style={geometry.floating ? { paddingTop: FLOAT_TOP } : undefined}
+    >
       <style>{`html,body{background:transparent!important;color-scheme:dark}`}</style>
       <div
         className="pointer-events-auto relative text-white"
@@ -162,23 +170,37 @@ export function Island({ params = {} }: { params?: IslandParams }) {
           width: expanded ? expandedWidth : collapsedWidth,
           height: expanded ? expandedHeight : notchHeight,
           background: "#000",
-          borderRadius: expanded ? "0 0 30px 30px" : `0 0 ${Math.min(14, notchHeight / 2.4)}px ${Math.min(14, notchHeight / 2.4)}px`,
-          boxShadow: expanded ? "0 18px 40px -12px rgba(0,0,0,0.55), 0 0 0 0.5px rgba(255,255,255,0.06)" : "none",
+          borderRadius: geometry.floating
+            ? expanded
+              ? "28px"
+              : `${notchHeight / 2}px`
+            : expanded
+              ? "0 0 30px 30px"
+              : `0 0 ${Math.min(14, notchHeight / 2.4)}px ${Math.min(14, notchHeight / 2.4)}px`,
+          boxShadow: geometry.floating
+            ? "0 0 0 0.5px rgba(255,255,255,0.12)"
+            : expanded
+              ? "0 18px 40px -12px rgba(0,0,0,0.55), 0 0 0 0.5px rgba(255,255,255,0.06)"
+              : "none",
           transitionProperty: "width, height, border-radius, box-shadow",
           transitionDuration: expanded ? "560ms" : "380ms",
           transitionTimingFunction: expanded ? "cubic-bezier(0.3, 1.32, 0.5, 1)" : "cubic-bezier(0.4, 0, 0.2, 1)",
         }}
       >
-        <span
-          aria-hidden
-          className="absolute top-0 -left-2 size-2"
-          style={{ background: "radial-gradient(circle at 0 100%, transparent 7.5px, #000 8px)" }}
-        />
-        <span
-          aria-hidden
-          className="absolute top-0 -right-2 size-2"
-          style={{ background: "radial-gradient(circle at 100% 100%, transparent 7.5px, #000 8px)" }}
-        />
+        {!geometry.floating && (
+          <>
+            <span
+              aria-hidden
+              className="absolute top-0 -left-2 size-2"
+              style={{ background: "radial-gradient(circle at 0 100%, transparent 7.5px, #000 8px)" }}
+            />
+            <span
+              aria-hidden
+              className="absolute top-0 -right-2 size-2"
+              style={{ background: "radial-gradient(circle at 100% 100%, transparent 7.5px, #000 8px)" }}
+            />
+          </>
+        )}
 
         {/* Collapsed: one wing either side of the notch. */}
         <div

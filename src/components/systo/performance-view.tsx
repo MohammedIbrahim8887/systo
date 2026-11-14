@@ -1,5 +1,6 @@
 "use client";
 
+import { OS, IS_WINDOWS } from "@/lib/platform";
 import { useMemo, useState } from "react";
 import { usePoll } from "@/lib/client/use-poll";
 import { useSettings } from "@/lib/client/settings";
@@ -143,7 +144,7 @@ export function PerformanceView({ snapshot }: { snapshot: Snapshot | null }) {
               <p className="mt-0.5 text-[12px] text-muted-foreground">
                 {active === "cpu" && info && `${info.chip} · ${info.cores} cores${info.performanceCores ? ` (${info.performanceCores} performance, ${info.efficiencyCores} efficiency)` : ""}`}
                 {active === "memory" && info && `${formatBytes(info.memory, 0)} unified memory`}
-                {active === "disk" && info && `Macintosh HD · ${formatBytes(info.diskFree)} free of ${formatBytes(info.diskTotal, 0)}`}
+                {active === "disk" && info && `${OS.volume} · ${formatBytes(info.diskFree)} free of ${formatBytes(info.diskTotal, 0)}`}
                 {active === "network" && "Wi-Fi and Ethernet, all interfaces combined"}
                 {active === "gpu" && info && `${info.chip} GPU${info.gpuCores ? ` · ${info.gpuCores} cores` : ""}`}
               </p>
@@ -190,7 +191,7 @@ export function PerformanceView({ snapshot }: { snapshot: Snapshot | null }) {
                 <>
                   <Stat label="In use" value={formatBytes(t.memoryUsed)} hint={`${Math.round((t.memoryUsed / t.memoryTotal) * 100)}% of ${formatBytes(t.memoryTotal, 0)}`} />
                   <Stat label="App memory" value={formatBytes(t.memoryApp)} />
-                  <Stat label="Wired" value={formatBytes(t.memoryWired)} hint="Kept in RAM by macOS" />
+                  <Stat label={IS_WINDOWS ? "Kernel" : "Wired"} value={formatBytes(t.memoryWired)} hint={`Kept in RAM by ${OS.name}`} />
                   <Stat label="Compressed" value={formatBytes(t.memoryCompressed)} />
                   <Stat label="Cached files" value={formatBytes(t.memoryCached)} hint="Freed when apps need it" />
                   <Stat label="Swap used" value={formatBytes(t.swapUsed)} />

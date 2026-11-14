@@ -1,3 +1,4 @@
+import { IS_WINDOWS, OS } from "./platform";
 import type { Metric, ProcessKind, Safety, Section } from "./types";
 
 export const KIND_META: Record<ProcessKind, { label: string; short: string; description: string }> = {
@@ -7,14 +8,16 @@ export const KIND_META: Record<ProcessKind, { label: string; short: string; desc
     description: "An application you installed and opened, with its own windows.",
   },
   "system-app": {
-    label: "macOS App",
-    short: "macOS",
-    description: "An app that ships with macOS, made by Apple.",
+    label: IS_WINDOWS ? "Windows App" : "macOS App",
+    short: IS_WINDOWS ? "Windows" : "macOS",
+    description: IS_WINDOWS ? "An app that ships with Windows, made by Microsoft." : "An app that ships with macOS, made by Apple.",
   },
   "menu-bar": {
-    label: "Menu Bar App",
-    short: "Menu bar",
-    description: "Runs without a Dock icon, usually as a menu bar item or background agent.",
+    label: IS_WINDOWS ? "Background App" : "Menu Bar App",
+    short: IS_WINDOWS ? "Background" : "Menu bar",
+    description: IS_WINDOWS
+      ? "Runs without a window, usually as a notification area icon, updater or sync tool."
+      : "Runs without a Dock icon, usually as a menu bar item or background agent.",
   },
   helper: {
     label: "Helper",
@@ -29,17 +32,17 @@ export const KIND_META: Record<ProcessKind, { label: string; short: string; desc
   "third-party-service": {
     label: "3rd-party Service",
     short: "Service",
-    description: "A background service installed by third-party software, not by Apple.",
+    description: `A background service installed by third-party software, not by ${IS_WINDOWS ? "Microsoft" : "Apple"}.`,
   },
   "user-service": {
-    label: "macOS Agent",
-    short: "Agent",
-    description: "A macOS background agent running in your user session.",
+    label: IS_WINDOWS ? "Windows Process" : "macOS Agent",
+    short: IS_WINDOWS ? "Windows" : "Agent",
+    description: `A ${OS.name} background process running in your user session.`,
   },
   "system-service": {
-    label: "macOS Service",
+    label: IS_WINDOWS ? "Windows Service" : "macOS Service",
     short: "System",
-    description: "A macOS daemon that runs for the whole system, usually as root.",
+    description: IS_WINDOWS ? "A Windows service that runs for the whole system, usually as SYSTEM." : "A macOS daemon that runs for the whole system, usually as root.",
   },
   kernel: {
     label: "Kernel",
@@ -55,22 +58,25 @@ export const SAFETY_META: Record<Safety, { label: string; description: string }>
   },
   relaunches: {
     label: "Relaunches",
-    description: "macOS restarts it automatically when it's needed, so ending it is mostly harmless.",
+    description: `${OS.name} restarts it automatically when it's needed, so ending it is mostly harmless.`,
   },
   caution: {
     label: "Use caution",
-    description: "Part of macOS. Ending it may break features until it relaunches or you log in again.",
+    description: `Part of ${OS.name}. Ending it may break features until it relaunches or you sign in again.`,
   },
   critical: {
     label: "Critical",
-    description: "Essential to macOS. Ending it will crash your session, log you out, or restart the Mac.",
+    description: `Essential to ${OS.name}. Ending it will crash your session, sign you out, or restart the ${OS.device}.`,
   },
 };
 
 export const SECTION_META: Record<Section, { label: string; hint: string }> = {
   apps: { label: "Apps", hint: "Apps with windows you can see" },
-  background: { label: "Background", hint: "Menu bar apps, helpers, dev tools and third-party services" },
-  system: { label: "System", hint: "Processes that are part of macOS" },
+  background: {
+    label: "Background",
+    hint: IS_WINDOWS ? "Background apps, helpers, dev tools and third-party services" : "Menu bar apps, helpers, dev tools and third-party services",
+  },
+  system: { label: "System", hint: `Processes that are part of ${OS.name}` },
 };
 
 export const METRIC_META: Record<Metric, { label: string; short: string }> = {

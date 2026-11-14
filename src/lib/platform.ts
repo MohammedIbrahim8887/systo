@@ -9,8 +9,26 @@ export const IS_WINDOWS: boolean =
 
 /** User-facing names that differ between macOS and Windows. */
 export const OS = IS_WINDOWS
-  ? { name: "Windows", device: "PC", fileManager: "File Explorer", reveal: "Show in File Explorer", trash: "Recycle Bin", mod: "Ctrl+" }
-  : { name: "macOS", device: "Mac", fileManager: "Finder", reveal: "Show in Finder", trash: "Trash", mod: "⌘" };
+  ? {
+      name: "Windows",
+      device: "PC",
+      fileManager: "File Explorer",
+      reveal: "Show in File Explorer",
+      trash: "Recycle Bin",
+      mod: "Ctrl+",
+      volume: "Local Disk (C:)",
+      menuBar: "notification area",
+    }
+  : {
+      name: "macOS",
+      device: "Mac",
+      fileManager: "Finder",
+      reveal: "Show in Finder",
+      trash: "Trash",
+      mod: "⌘",
+      volume: "Macintosh HD",
+      menuBar: "menu bar",
+    };
 
 /** The platform's command key: ⌘ on macOS, Ctrl on Windows. */
 export function isModKey(event: { metaKey: boolean; ctrlKey: boolean }) {

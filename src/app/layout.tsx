@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Systo",
-  description: "A simple, monochrome process manager for macOS.",
+  description: "A simple, monochrome process manager for macOS and Windows.",
   icons: {
     icon: [{ url: "/favicon.svg", type: "image/svg+xml", sizes: "any" }],
   },

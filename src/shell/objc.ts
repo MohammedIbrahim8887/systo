@@ -8,18 +8,26 @@ import { dlopen, ptr } from "bun:ffi";
 
 const LIBOBJC = "/usr/lib/libobjc.A.dylib";
 
-const runtime = dlopen(LIBOBJC, {
-  objc_getClass: { args: ["ptr"], returns: "ptr" },
-  sel_registerName: { args: ["ptr"], returns: "ptr" },
-  objc_autoreleasePoolPush: { args: [], returns: "ptr" },
-  objc_autoreleasePoolPop: { args: ["ptr"], returns: "void" },
-}).symbols;
+function load() {
+  const runtime = dlopen(LIBOBJC, {
+    objc_getClass: { args: ["ptr"], returns: "ptr" },
+    sel_registerName: { args: ["ptr"], returns: "ptr" },
+    objc_autoreleasePoolPush: { args: [], returns: "ptr" },
+    objc_autoreleasePoolPop: { args: ["ptr"], returns: "void" },
+  }).symbols;
+  return {
+    runtime,
+    send: dlopen(LIBOBJC, { objc_msgSend: { args: ["ptr", "ptr"], returns: "ptr" } }).symbols.objc_msgSend,
+    sendPtr: dlopen(LIBOBJC, { objc_msgSend: { args: ["ptr", "ptr", "ptr"], returns: "ptr" } }).symbols.objc_msgSend,
+    sendIndex: dlopen(LIBOBJC, { objc_msgSend: { args: ["ptr", "ptr", "u64"], returns: "ptr" } }).symbols.objc_msgSend,
+    sendPtrIndex: dlopen(LIBOBJC, { objc_msgSend: { args: ["ptr", "ptr", "ptr", "i64"], returns: "void" } }).symbols.objc_msgSend,
+    sendMain: dlopen(LIBOBJC, { objc_msgSend: { args: ["ptr", "ptr", "ptr", "ptr", "bool"], returns: "void" } }).symbols.objc_msgSend,
+  };
+}
 
-const send = dlopen(LIBOBJC, { objc_msgSend: { args: ["ptr", "ptr"], returns: "ptr" } }).symbols.objc_msgSend;
-const sendPtr = dlopen(LIBOBJC, { objc_msgSend: { args: ["ptr", "ptr", "ptr"], returns: "ptr" } }).symbols.objc_msgSend;
-const sendIndex = dlopen(LIBOBJC, { objc_msgSend: { args: ["ptr", "ptr", "u64"], returns: "ptr" } }).symbols.objc_msgSend;
-const sendPtrIndex = dlopen(LIBOBJC, { objc_msgSend: { args: ["ptr", "ptr", "ptr", "i64"], returns: "void" } }).symbols.objc_msgSend;
-const sendMain = dlopen(LIBOBJC, { objc_msgSend: { args: ["ptr", "ptr", "ptr", "ptr", "bool"], returns: "void" } }).symbols.objc_msgSend;
+/** Loaded on first use, so importing this module on Windows doesn't try to open libobjc. */
+let loaded: ReturnType<typeof load> | null = null;
+const objc = () => (loaded ??= load());
 
 const cstring = (s: string) => Buffer.from(`${s}\0`);
 const selectors = new Map<string, number>();
@@ -27,14 +35,14 @@ const selectors = new Map<string, number>();
 function sel(name: string): number {
   let value = selectors.get(name);
   if (!value) {
-    value = runtime.sel_registerName(ptr(cstring(name))) as number;
+    value = objc().runtime.sel_registerName(ptr(cstring(name))) as number;
     selectors.set(name, value);
   }
   return value;
 }
 
 function cls(name: string): number {
-  return runtime.objc_getClass(ptr(cstring(name))) as number;
+  return objc().runtime.objc_getClass(ptr(cstring(name))) as number;
 }
 
 type Arg = ArrayBufferView;
@@ -52,26 +60,26 @@ export const arg = {
  */
 export function invoke(target: number, selector: string, args: Arg[] = [], returnDoubles = 0, mainThread = true): Float64Array | null {
   if (!target) return null;
-  const pool = runtime.objc_autoreleasePoolPush();
+  const pool = objc().runtime.objc_autoreleasePoolPush();
   try {
     const s = sel(selector);
-    const signature = sendPtr(target, sel("methodSignatureForSelector:"), s) as number;
+    const signature = objc().sendPtr(target, sel("methodSignatureForSelector:"), s) as number;
     if (!signature) return null;
-    const invocation = sendPtr(cls("NSInvocation"), sel("invocationWithMethodSignature:"), signature) as number;
-    sendPtr(invocation, sel("setTarget:"), target);
-    sendPtr(invocation, sel("setSelector:"), s);
-    args.forEach((value, index) => sendPtrIndex(invocation, sel("setArgument:atIndex:"), ptr(value), index + 2));
+    const invocation = objc().sendPtr(cls("NSInvocation"), sel("invocationWithMethodSignature:"), signature) as number;
+    objc().sendPtr(invocation, sel("setTarget:"), target);
+    objc().sendPtr(invocation, sel("setSelector:"), s);
+    args.forEach((value, index) => objc().sendPtrIndex(invocation, sel("setArgument:atIndex:"), ptr(value), index + 2));
     if (mainThread) {
-      sendMain(invocation, sel("performSelectorOnMainThread:withObject:waitUntilDone:"), sel("invoke"), null, true);
+      objc().sendMain(invocation, sel("performSelectorOnMainThread:withObject:waitUntilDone:"), sel("invoke"), null, true);
     } else {
-      send(invocation, sel("invoke"));
+      objc().send(invocation, sel("invoke"));
     }
     if (!returnDoubles) return null;
     const out = new Float64Array(returnDoubles);
-    sendPtrIndex(invocation, sel("getReturnValue:"), ptr(out), 0);
+    objc().sendPtrIndex(invocation, sel("getReturnValue:"), ptr(out), 0);
     return out;
   } finally {
-    runtime.objc_autoreleasePoolPop(pool);
+    objc().runtime.objc_autoreleasePoolPop(pool);
   }
 }
 
@@ -90,15 +98,15 @@ export interface ScreenGeometry {
 
 /** The screen with a camera housing if there is one, otherwise the primary (menu bar) screen. */
 export function notchScreen(): ScreenGeometry | null {
-  const pool = runtime.objc_autoreleasePoolPush();
+  const pool = objc().runtime.objc_autoreleasePoolPush();
   try {
-    const screens = send(cls("NSScreen"), sel("screens")) as number;
+    const screens = objc().send(cls("NSScreen"), sel("screens")) as number;
     if (!screens) return null;
-    const count = Number(send(screens, sel("count")) ?? 0);
+    const count = Number(objc().send(screens, sel("count")) ?? 0);
     let primaryHeight = 0;
     let chosen: ScreenGeometry | null = null;
     for (let i = 0; i < count; i++) {
-      const screen = sendIndex(screens, sel("objectAtIndex:"), i) as number;
+      const screen = objc().sendIndex(screens, sel("objectAtIndex:"), i) as number;
       const frame = invoke(screen, "frame", [], 4);
       const visible = invoke(screen, "visibleFrame", [], 4);
       const insets = invoke(screen, "safeAreaInsets", [], 4);
@@ -130,7 +138,7 @@ export function notchScreen(): ScreenGeometry | null {
     if (chosen) chosen.primaryHeight = primaryHeight;
     return chosen;
   } finally {
-    runtime.objc_autoreleasePoolPop(pool);
+    objc().runtime.objc_autoreleasePoolPop(pool);
   }
 }
 

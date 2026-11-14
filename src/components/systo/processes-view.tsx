@@ -1,5 +1,6 @@
 "use client";
 
+import { OS, isModKey } from "@/lib/platform";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import {
   ArrowDownIcon,
@@ -427,7 +428,7 @@ export function ProcessesView({ snapshot }: { snapshot: Snapshot | null }) {
     } else if ((event.key === "Delete" || event.key === "Backspace") && selectedTarget) {
       event.preventDefault();
       actions.endTask(selectedTarget, event.altKey ? "force" : "terminate");
-    } else if ((event.key === "i" && event.metaKey) || event.key === "?") {
+    } else if ((event.key === "i" && isModKey(event)) || event.key === "?") {
       event.preventDefault();
       if (selectedTarget) actions.explain(selectedTarget);
     } else if (event.key === "Escape") {
@@ -487,7 +488,7 @@ export function ProcessesView({ snapshot }: { snapshot: Snapshot | null }) {
               <XIcon className="size-3.5" />
             </button>
           ) : (
-            <Kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2">⌘F</Kbd>
+            <Kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2">{OS.mod}F</Kbd>
           )}
         </div>
         <ToggleGroup
@@ -516,7 +517,7 @@ export function ProcessesView({ snapshot }: { snapshot: Snapshot | null }) {
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              Explain the selected process <Kbd className="ml-1">⌘I</Kbd>
+              Explain the selected process <Kbd className="ml-1">{OS.mod}I</Kbd>
             </TooltipContent>
           </Tooltip>
           <div className="flex">
@@ -645,7 +646,7 @@ function RowMenu({ target }: { target: Target }) {
       </ContextMenuLabel>
       <ContextMenuItem onSelect={() => actions.explain(target)}>
         <CircleHelpIcon /> What is this?
-        <ContextMenuShortcut>⌘I</ContextMenuShortcut>
+        <ContextMenuShortcut>{OS.mod}I</ContextMenuShortcut>
       </ContextMenuItem>
       <ContextMenuSeparator />
       {isApp && (
@@ -664,7 +665,7 @@ function RowMenu({ target }: { target: Target }) {
       <ContextMenuSeparator />
       {path?.startsWith("/") && (
         <ContextMenuItem onSelect={() => actions.reveal(path)}>
-          <FolderSearchIcon /> Reveal in Finder
+          <FolderSearchIcon /> {OS.reveal}
         </ContextMenuItem>
       )}
       <ContextMenuItem onSelect={() => void navigator.clipboard?.writeText(String(pid))}>
@@ -677,7 +678,7 @@ function RowMenu({ target }: { target: Target }) {
       )}
       <ContextMenuItem
         onSelect={() =>
-          window.open(`https://duckduckgo.com/?q=${encodeURIComponent(`macOS "${target.process?.name ?? target.group.name}" process`)}`, "_blank")
+          window.open(`https://duckduckgo.com/?q=${encodeURIComponent(`${OS.name} "${target.process?.name ?? target.group.name}" process`)}`, "_blank")
         }
       >
         <GlobeIcon /> Search the web

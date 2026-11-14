@@ -28,10 +28,16 @@ export type ShellCommand =
  */
 export function sendShellCommand(command: ShellCommand) {
   const payload = encodeURIComponent(JSON.stringify(command));
-  const nonce = Math.random().toString(36).slice(2, 8);
+  const nonce = Math.random().toString(36).slice(2, 10);
   const base = location.pathname + location.search;
   location.hash = `systo=${payload}&n=${nonce}`;
   setTimeout(() => history.replaceState(history.state, "", base), 60);
+  // Same command over HTTP; the shell ignores whichever copy arrives second.
+  void fetch("/api/shell", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ command, nonce }),
+  }).catch(() => {});
 }
 
 export function useShellState(): ShellState | null {

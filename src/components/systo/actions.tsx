@@ -1,5 +1,6 @@
 "use client";
 
+import { OS } from "@/lib/platform";
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
@@ -82,7 +83,7 @@ export function ActionsProvider({ children, onChanged }: { children: ReactNode; 
       } else if (result.needsAdmin) {
         toast(`${name} belongs to the system`, {
           id,
-          description: "macOS only lets an administrator end it.",
+          description: `${OS.name} only lets an administrator end it.`,
           action: { label: "End as admin", onClick: () => void run(target, mode, true) },
           duration: 10000,
         });
@@ -99,7 +100,7 @@ export function ActionsProvider({ children, onChanged }: { children: ReactNode; 
     (target: Target, mode: KillMode = "terminate") => {
       if (!canEnd(target)) {
         toast("Systo can't end this", {
-          description: target.group.self ? "That's Systo itself. Quit from the menu bar instead." : "macOS doesn't allow ending this process.",
+          description: target.group.self ? `That's Systo itself. Quit from the ${OS.menuBar} instead.` : `${OS.name} doesn't allow ending this process.`,
         });
         return;
       }

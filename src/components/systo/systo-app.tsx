@@ -1,5 +1,6 @@
 "use client";
 
+import { OS, isModKey } from "@/lib/platform";
 import { useEffect, useState, type ReactNode } from "react";
 import { ActivityIcon, HardDriveIcon, HistoryIcon, ListTreeIcon, PowerIcon, SettingsIcon, type LucideIcon } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
@@ -87,7 +88,7 @@ function Shell() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (!event.metaKey) return;
+      if (!isModKey(event)) return;
       if (SHORTCUTS[event.key]) setView(SHORTCUTS[event.key]);
       else if (event.key === ",") {
         event.preventDefault();
@@ -111,11 +112,11 @@ function Shell() {
             <span className="text-[14px] font-semibold tracking-tight">Systo</span>
           </div>
           <nav className="space-y-0.5 px-2">
-            <NavItem icon={ListTreeIcon} label="Processes" active={view === "processes"} onClick={() => setView("processes")} shortcut="⌘1" />
-            <NavItem icon={ActivityIcon} label="Performance" active={view === "performance"} onClick={() => setView("performance")} shortcut="⌘2" />
-            <NavItem icon={HistoryIcon} label="History" active={view === "history"} onClick={() => setView("history")} shortcut="⌘3" />
-            <NavItem icon={PowerIcon} label="Startup" active={view === "startup"} onClick={() => setView("startup")} shortcut="⌘4" />
-            <NavItem icon={HardDriveIcon} label="Disk" active={view === "disk"} onClick={() => setView("disk")} shortcut="⌘5" />
+            <NavItem icon={ListTreeIcon} label="Processes" active={view === "processes"} onClick={() => setView("processes")} shortcut={`${OS.mod}1`} />
+            <NavItem icon={ActivityIcon} label="Performance" active={view === "performance"} onClick={() => setView("performance")} shortcut={`${OS.mod}2`} />
+            <NavItem icon={HistoryIcon} label="History" active={view === "history"} onClick={() => setView("history")} shortcut={`${OS.mod}3`} />
+            <NavItem icon={PowerIcon} label="Startup" active={view === "startup"} onClick={() => setView("startup")} shortcut={`${OS.mod}4`} />
+            <NavItem icon={HardDriveIcon} label="Disk" active={view === "disk"} onClick={() => setView("disk")} shortcut={`${OS.mod}5`} />
           </nav>
 
           <div className="mt-auto space-y-3 px-4 pb-3">
@@ -129,7 +130,7 @@ function Shell() {
             {error && <p className="text-[11px] leading-snug text-muted-foreground">Can't reach the sampler: {error}</p>}
           </div>
           <div className="border-t px-2 py-2">
-            <NavItem icon={SettingsIcon} label="Settings" onClick={() => setSettingsOpen(true)} shortcut="⌘," />
+            <NavItem icon={SettingsIcon} label="Settings" onClick={() => setSettingsOpen(true)} shortcut={`${OS.mod},`} />
           </div>
         </aside>
         <main className="min-w-0 flex-1">

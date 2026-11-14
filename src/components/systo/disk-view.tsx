@@ -1,5 +1,6 @@
 "use client";
 
+import { OS } from "@/lib/platform";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -101,7 +102,7 @@ function NodeIcon({ node, size = 18, colorIcons }: { node: Pick<DiskViewNode, "k
 function EmptyState({ onScan, volume }: { onScan: (root: string) => void; volume: DiskReport["volume"] }) {
   const options = [
     { root: "home", icon: HomeIcon, title: "Home folder", hint: "Your documents, apps' data, caches and projects. Usually where the space goes." },
-    { root: "volume", icon: HardDriveIcon, title: "Macintosh HD", hint: "Everything on the startup disk you're allowed to read, including other users' and system data." },
+    { root: "volume", icon: HardDriveIcon, title: OS.volume, hint: "Everything on the startup disk you're allowed to read, including other users' and system data." },
     { root: "choose", icon: FolderSearchIcon, title: "Choose a folder…", hint: "Scan one folder, like an external drive or a project directory." },
   ];
   return (
@@ -180,14 +181,14 @@ function Capacity({ report }: { report: DiskReport }) {
   const shown = view?.node.size ?? 0;
   const otherUsed = Math.max(0, volume.used - scanned);
   // APFS clones and snapshots can make a folder add up to more than the disk reports as used.
-  const showOther = state.label !== "Macintosh HD" && otherUsed > 1024 ** 3;
+  const showOther = state.label !== OS.volume && otherUsed > 1024 ** 3;
   const free = Math.max(0, volume.total - volume.used);
   const pct = (v: number) => `${Math.max(0, Math.min(100, (v / Math.max(1, volume.total)) * 100))}%`;
   const inner = shown < scanned ? shown : 0;
   return (
     <div>
       <div className="flex items-baseline gap-3">
-        <span className="text-[12px] text-muted-foreground">Macintosh HD</span>
+        <span className="text-[12px] text-muted-foreground">{OS.volume}</span>
         <span className="tabular ml-auto text-[12px]">
           <span className="font-medium">{formatBytes(free)}</span> <span className="text-muted-foreground">free of {formatBytes(volume.total)}</span>
         </span>
@@ -243,14 +244,14 @@ function ItemMenu({ path, name, size, onTrash, onOpen }: { path: string; name: s
           </DropdownMenuItem>
         )}
         <DropdownMenuItem onSelect={() => reveal(path)}>
-          <FolderOpenIcon /> Show in Finder
+          <FolderOpenIcon /> {OS.reveal}
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => copyPath(path)}>
           <CopyIcon /> Copy path
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onSelect={() => onTrash({ path, name, size })}>
-          <Trash2Icon /> Move to Trash…
+          <Trash2Icon /> Move to {OS.trash}…
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -419,7 +420,7 @@ function Suggestion({ s, onTrash, onOpen }: { s: DiskSuggestion; onTrash: (t: Tr
                   Open in chart
                 </Button>
                 <Button variant="ghost" size="sm" className="h-7 text-[11.5px]" onClick={() => reveal(s.path!)}>
-                  Show in Finder
+                  {OS.reveal}
                 </Button>
               </>
             )}
@@ -502,7 +503,7 @@ export function DiskView() {
     setTrashTarget(null);
     const res = await post<{ ok: boolean; message: string }>({ action: "trash", path: target.path });
     if (res.ok) {
-      toast.success(`Moved ${target.name} to the Trash`, { description: `${formatBytes(target.size)} will be freed when you empty the Trash.` });
+      toast.success(`Moved ${target.name} to the ${OS.trash}`, { description: `${formatBytes(target.size)} will be freed when you empty the ${OS.trash}.` });
       if (path && (path === target.path || path.startsWith(target.path + "/"))) setPath(dirname(target.path));
     } else toast.error(`Couldn't move ${target.name}`, { description: res.message });
     refresh();
@@ -564,7 +565,7 @@ export function DiskView() {
                 <HomeIcon /> Home folder
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => void startScan("volume")}>
-                <HardDriveIcon /> Macintosh HD
+                <HardDriveIcon /> {OS.volume}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => void startScan("choose")}>
@@ -696,7 +697,7 @@ export function DiskView() {
                     ) : (
                       <>
                         <p className="px-0.5 text-[11.5px] leading-relaxed text-muted-foreground">
-                          Places that commonly grow large. Look before you delete; Systo only ever moves things to the Trash.
+                          Places that commonly grow large. Look before you delete; Systo only ever moves things to the {OS.trash}.
                         </p>
                         {suggestions.map((s) => (
                           <Suggestion
@@ -722,16 +723,15 @@ export function DiskView() {
       <AlertDialog open={trashTarget !== null} onOpenChange={(o) => !o && setTrashTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Move “{trashTarget?.name}” to the Trash?</AlertDialogTitle>
+            <AlertDialogTitle>Move “{trashTarget?.name}” to the {OS.trash}?</AlertDialogTitle>
             <AlertDialogDescription>
-              {trashTarget && formatBytes(trashTarget.size)} will be freed once you empty the Trash. Until then you can put it back from the Trash in
-              Finder.
+              {trashTarget && formatBytes(trashTarget.size)} will be freed once you empty the {OS.trash}. Until then you can put it back from the {OS.trash}.
               <span className="mt-2 block truncate font-mono text-[11px]">{trashTarget?.path}</span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void confirmTrash()}>Move to Trash</AlertDialogAction>
+            <AlertDialogAction onClick={() => void confirmTrash()}>Move to {OS.trash}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

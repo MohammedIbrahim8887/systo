@@ -1,5 +1,6 @@
 "use client";
 
+import { OS } from "@/lib/platform";
 import { useMemo, useRef, useState } from "react";
 import { HistoryIcon } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -392,7 +393,7 @@ export function HistoryView() {
             <HistoryIcon className="size-8 text-muted-foreground" strokeWidth={1.5} />
             <h3 className="mt-3 text-[15px] font-medium">Recording has started</h3>
             <p className="mt-1 max-w-sm text-[12.5px] leading-relaxed text-muted-foreground">
-              Systo records which apps use your Mac while it runs, including from the menu bar with this window closed. The
+              Systo records which apps use your {OS.device} while it runs, including from the {OS.menuBar} with this window closed. The
               first entries appear within a minute and build up to 90 days.
             </p>
           </div>
@@ -406,7 +407,7 @@ export function HistoryView() {
 
             <div className="mt-6 grid grid-cols-2 gap-x-8 gap-y-5 sm:grid-cols-4">
               <Stat
-                label={metric === "memory" ? "Average in use" : "Whole Mac"}
+                label={metric === "memory" ? "Average in use" : `Whole ${OS.device}`}
                 value={formatTotal(metric, current.systemTotal)}
                 hint={metric === "cpu" && summary ? `avg ${formatPercent(summary.avgCpu)} of the chip` : undefined}
               />
@@ -432,7 +433,7 @@ export function HistoryView() {
               <Leaderboard report={current} highlight={highlight} onHighlight={setHighlight} colorIcons={settings.colorIcons} />
               {summary?.partial && (
                 <p className="mt-3 text-[11.5px] leading-relaxed text-muted-foreground">
-                  History only covers time Systo was running. Keep it in the menu bar to fill in the {rangeMeta.long}.
+                  History only covers time Systo was running. Keep it in the {OS.menuBar} to fill in the {rangeMeta.long}.
                 </p>
               )}
             </div>

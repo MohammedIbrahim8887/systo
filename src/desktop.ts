@@ -3,7 +3,10 @@ import { join } from "node:path";
 import { defineDesktop } from "@farm.js/core/desktop";
 import Electrobun, { BrowserWindow, Tray, Utils } from "electrobun/main";
 import { IslandController } from "./shell/island";
-import { TRAY_ICON_PNG } from "./shell/tray-icon";
+import { WinIslandController } from "./shell/island-win";
+import { TRAY_ICON_PNG, TRAY_ICON_PNG_WINDOWS } from "./shell/tray-icon";
+
+const IS_WINDOWS = process.platform === "win32";
 
 interface ShellPrefs {
   island: boolean;
@@ -36,7 +39,7 @@ function trayIconPath() {
   const file = join(Utils.paths.userData, "tray-icon.png");
   try {
     mkdirSync(Utils.paths.userData, { recursive: true });
-    writeFileSync(file, Buffer.from(TRAY_ICON_PNG, "base64"));
+    writeFileSync(file, Buffer.from(IS_WINDOWS ? TRAY_ICON_PNG_WINDOWS : TRAY_ICON_PNG, "base64"));
   } catch {
     // tray falls back to its title
   }
@@ -86,7 +89,11 @@ export default defineDesktop<BrowserWindow>({
       } else if (command.type === "collapse-island") island.collapse();
     };
 
-    const island = new IslandController(server.origin, handle);
+    const island = IS_WINDOWS ? new WinIslandController(server.origin, handle) : new IslandController(server.origin, handle);
+
+    // The server runs in this process. Pages also POST commands to /api/shell, which hands them over
+    // here, in case a platform's webview doesn't report in-page navigations. Nonces dedupe the two.
+    (globalThis as { __systoShellCommand?: (url: string) => void }).__systoShellCommand = handle;
 
     const wireMain = (target: BrowserWindow) => {
       target.webview.on("dom-ready", () => pushShellState(target));
@@ -139,7 +146,9 @@ export default defineDesktop<BrowserWindow>({
     pushShellState(window);
 
     try {
-      tray = new Tray({ image: trayIconPath(), template: true, width: 18, height: 18 });
+      tray = IS_WINDOWS
+        ? new Tray({ title: "Systo", image: trayIconPath(), template: false, width: 16, height: 16 })
+        : new Tray({ image: trayIconPath(), template: true, width: 18, height: 18 });
       tray.on("tray-clicked", (event) => {
         const action = event.data?.action;
         if (action === "open") openMain();
