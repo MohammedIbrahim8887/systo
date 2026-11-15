@@ -2,8 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 
-/** Polls a JSON endpoint back-to-back (never overlapping), pausing while the page is hidden. */
-export function usePoll<T>(url: string | null, interval: number, paused = false) {
+/**
+ * Polls a JSON endpoint back-to-back (never overlapping). Polling stops while the page is hidden
+ * (minimized, another Space, island hidden) and resumes with a fresh read when it's visible again.
+ */
+export function usePoll<T>(url: string | null, interval: number, paused = false, options: { whenHidden?: boolean } = {}) {
+  // The island overlay can read as hidden to WebKit (it sits over the notch), but it's on screen.
+  const pauseHidden = !options.whenHidden;
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const kick = useRef<() => void>(() => {});
@@ -30,17 +35,25 @@ export function usePoll<T>(url: string | null, interval: number, paused = false)
         if (cancelled || (err as Error).name === "AbortError") return;
         setError((err as Error).message);
       }
-      if (!cancelled && !paused) timer = setTimeout(tick, document.hidden ? interval * 4 : interval);
+      if (!cancelled && !paused && !(pauseHidden && document.hidden)) timer = setTimeout(tick, interval);
+    };
+
+    const onVisibility = () => {
+      if (!pauseHidden) return;
+      if (document.hidden) clearTimeout(timer);
+      else if (!paused) void tick();
     };
 
     kick.current = () => void tick();
     void tick();
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       cancelled = true;
       clearTimeout(timer);
       controller?.abort();
+      document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [url, interval, paused]);
+  }, [url, interval, paused, pauseHidden]);
 
   return { data, error, refresh: () => kick.current() };
 }

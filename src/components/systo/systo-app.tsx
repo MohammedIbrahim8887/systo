@@ -84,7 +84,9 @@ function Shell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { settings } = useSettings();
   const interval = settings.interval || 1500;
-  const { data: snapshot, error, refresh } = usePoll<Snapshot>(`/api/snapshot?interval=${interval}`, interval, settings.interval === 0);
+  // Only the Processes view needs every process; the rest get the top consumers.
+  const scope = view === "processes" ? "" : "&scope=summary";
+  const { data: snapshot, error, refresh } = usePoll<Snapshot>(`/api/snapshot?interval=${interval}${scope}`, interval, settings.interval === 0);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
