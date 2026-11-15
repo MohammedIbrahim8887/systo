@@ -3,9 +3,10 @@
 All notable changes to Systo. The release workflow publishes each version's section as its
 GitHub release notes, and the website's changelog page renders this file.
 
-## [0.3.0] - Unreleased
+## [0.1.1] - 2026-11-15
 
 ### Added
+- **Windows in the stable download.** The Windows installer ships with this release: a floating Dynamic Island, grouped processes, startup toggles and the disk analyzer.
 - **Updates inside the app.** Systo checks for new versions on launch and every few hours, downloads them in the background, and installs with one click: **Restart to update** in Settings, the sidebar or the menu bar / tray.
 - **Open at login.** A Settings toggle starts Systo when you log in to your Mac or sign in to Windows.
 - A website with downloads and this changelog: [systo.mohammedibrahim.dev](https://systo.mohammedibrahim.dev).

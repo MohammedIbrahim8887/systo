@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v0.3.0 (matching package.json) to build both platforms and publish a GitHub
+# Push a tag like v0.1.1 (matching package.json) to build both platforms and publish a GitHub
 # release. The in-app updater reads <platform>-update-v2.json and the archive beside it from
 # releases/latest/download, so every stable release must carry both platforms' update files.
 
