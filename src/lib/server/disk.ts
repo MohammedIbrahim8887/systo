@@ -34,6 +34,7 @@ function normalizeRoot(requested: string): string {
 }
 const CACHE_FILE = appDataFile("disk-scan.json");
 const MIN_KEEP = 1024 * 1024;
+const UNLOAD_AFTER_MS = 120_000;
 const MAX_CHILDREN = 200;
 
 const WORKER_SOURCE = `
@@ -117,8 +118,30 @@ class DiskAnalyzer {
   private loaded = false;
   private workers: Worker[] = [];
   private cancelled = false;
+  private lastUse = 0;
+  private unloadTimer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * The scan tree can be tens of MB once parsed. Keep it only while the Disk view is in use; it's
+   * cached on disk, so the next visit reloads it in a moment.
+   */
+  private touch() {
+    this.lastUse = Date.now();
+    if (this.unloadTimer) return;
+    this.unloadTimer = setInterval(() => {
+      if (this.state.status === "scanning" || Date.now() - this.lastUse < UNLOAD_AFTER_MS) return;
+      this.result = null;
+      this.loaded = false;
+      (globalThis as { Bun?: { gc?: (force: boolean) => void } }).Bun?.gc?.(false);
+      if (this.state.status === "done") this.state = { ...this.state };
+      clearInterval(this.unloadTimer!);
+      this.unloadTimer = null;
+    }, 30_000);
+    (this.unloadTimer as { unref?: () => void }).unref?.();
+  }
 
   private load() {
+    this.touch();
     if (this.loaded) return;
     this.loaded = true;
     try {
@@ -194,7 +217,8 @@ class DiskAnalyzer {
 
   private scan(bun: string, root: string, dev: number, startedAt: number): Promise<void> {
     const listDepth = root === DATA_VOLUME ? 3 : 2;
-    const count = Math.max(2, Math.min(6, Math.floor((cpus().length || 4) / 2)));
+    // Four workers already saturate an SSD; each extra one is another Bun runtime in memory.
+    const count = Math.max(2, Math.min(4, Math.floor((cpus().length || 4) / 2)));
     const queue: Task[] = [];
     const listed = new Map<DiskNode, { s: number; f: number }>();
     const tree: DiskNode = { n: labelFor(root), s: 0, f: 0, k: 1 };
@@ -303,7 +327,7 @@ class DiskAnalyzer {
       };
 
       for (let i = 0; i < count; i++) {
-        const child = spawn(bun, ["-e", WORKER_SOURCE], { stdio: ["pipe", "pipe", "pipe"] }) as ChildProcessWithoutNullStreams;
+        const child = spawn(bun, ["--smol", "-e", WORKER_SOURCE], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true }) as ChildProcessWithoutNullStreams;
         const worker: Worker = { child, task: null, progress: { files: 0, dirs: 0, bytes: 0 } };
         child.stderr.on("data", () => {});
         child.on("error", (error) => reject(error));
