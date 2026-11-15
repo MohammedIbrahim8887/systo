@@ -12,7 +12,7 @@ import type {
 import { getBundleSync, loadBundle, outermostBundle } from "./bundle";
 import { classifyProcess, bundleKind, safetyFor, sectionFor, worstSafety } from "./classify";
 import { output } from "./exec";
-import { readNative, type NativeTable } from "./native";
+import { readNative, type NativeMemory, type NativeTable } from "./native";
 import { usage } from "./usage";
 import { exeDisplayName, exeInfo } from "./win/apps";
 import { classifyWin, safetyWin } from "./win/classify";
@@ -64,6 +64,43 @@ async function readPs(): Promise<PsRow[]> {
     });
   }
   return rows;
+}
+
+/** CPU time and RSS for processes libproc can't inspect (other users'), from setuid ps. */
+async function readPsCounters(): Promise<Map<number, { cpuNs: number; rss: number }>> {
+  const text = await output("/bin/ps", ["-axo", "pid=,time=,rss="]);
+  const map = new Map<number, { cpuNs: number; rss: number }>();
+  for (const line of text.split("\n")) {
+    const m = /^\s*(\d+)\s+(\S+)\s+(\d+)/.exec(line);
+    if (m) map.set(Number(m[1]), { cpuNs: parseCpuTime(m[2]), rss: Number(m[3]) * 1024 });
+  }
+  return map;
+}
+
+const userNames = new Map<number, string>();
+let userNamesLoaded: Promise<void> | null = null;
+
+/** uid → short name from the local directory, read once. */
+function loadUserNames() {
+  return (userNamesLoaded ??= output("/usr/bin/dscl", [".", "-list", "/Users", "UniqueID"], 5000).then((text) => {
+    for (const line of text.split("\n")) {
+      const m = /^(\S+)\s+(-?\d+)\s*$/.exec(line);
+      if (m && !userNames.has(Number(m[2]))) userNames.set(Number(m[2]), m[1]);
+    }
+  }));
+}
+
+function memoryFromNative(m: NativeMemory): MemoryStats {
+  const app = Math.max(0, m.internal - m.purgeable);
+  return {
+    used: app + m.wired + m.compressor,
+    app,
+    wired: m.wired,
+    compressed: m.compressor,
+    cached: m.external + m.purgeable,
+    swapUsed: m.swapUsed,
+    pressure: m.pressure >= 4 ? "critical" : m.pressure >= 2 ? "warning" : "normal",
+  };
 }
 
 async function readNettop(): Promise<Map<number, { in: number; out: number }>> {
@@ -165,6 +202,10 @@ const HISTORY = 120;
 const IDLE_STOP_MS = 15000;
 /** Cadence while nothing is polling but usage history is being recorded. */
 const BACKGROUND_MS = 10000;
+/** A poll within this window counts as someone looking. */
+const DEMAND_MS = 5000;
+/** Cadence while only the island is open: it shows one number collapsed, so 1.5s is wasted work. */
+const LIGHT_MS = 2500;
 /** 100 Mbit/s: below this, a quiet link would read as fully busy. */
 const NET_FLOOR = 12.5 * 1024 * 1024;
 
@@ -183,6 +224,16 @@ export class Sampler {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private running: Promise<void> | null = null;
   private lastDemand = 0;
+  /** Last poll from the main window, which shows every column (GPU, per-app network). */
+  private lastFullDemand = 0;
+  /** Last island poll for the network metric, which needs per-app network. */
+  private lastNetworkDemand = 0;
+  /** Per-app network comes from nettop, run only when needed; rates hold between runs. */
+  private netAt = 0;
+  private netLast = new Map<number, { in: number; out: number }>();
+  private netRates = new Map<number, { in: number; out: number }>();
+  private lastGpu: number | null = null;
+  private gpuTick = 0;
   private native = false;
   private cores = cpus().length || 1;
   private background = false;
@@ -198,9 +249,16 @@ export class Sampler {
     this.interval = Math.min(10000, Math.max(500, Math.round(ms)));
   }
 
-  /** Returns the latest snapshot, sampling on demand and keeping the loop alive while polled. */
-  async current(): Promise<Snapshot> {
-    this.lastDemand = Date.now();
+  /**
+   * Returns the latest snapshot, sampling on demand and keeping the loop alive while polled.
+   * "full" is the main window; "light" is the island and one-off reads, which sample slower and
+   * skip GPU and per-app network unless `network` asks for it.
+   */
+  async current(demand: "full" | "light" = "light", options: { network?: boolean } = {}): Promise<Snapshot> {
+    const now = Date.now();
+    this.lastDemand = now;
+    if (demand === "full") this.lastFullDemand = now;
+    if (options.network) this.lastNetworkDemand = now;
     if (!this.timer && !this.running) this.loop();
     if (!this.snapshot) {
       await this.running;
@@ -233,8 +291,33 @@ export class Sampler {
       this.timer = setTimeout(() => {
         this.timer = null;
         this.loop();
-      }, idle ? Math.max(this.interval, BACKGROUND_MS) : this.interval);
+      }, idle ? Math.max(this.interval, BACKGROUND_MS) : this.full() ? this.interval : Math.max(this.interval, LIGHT_MS));
     });
+  }
+
+  private full() {
+    return Date.now() - this.lastFullDemand < DEMAND_MS;
+  }
+
+  /** Per-app network rates from nettop when someone needs them, and at least every background tick for History. */
+  private async networkRates(): Promise<Map<number, { in: number; out: number }>> {
+    const now = Date.now();
+    const wanted = this.full() || now - this.lastNetworkDemand < DEMAND_MS || now - this.netAt >= BACKGROUND_MS - 500;
+    if (!wanted) return this.netRates;
+    const counters = await readNettop().catch(() => null);
+    if (!counters) return this.netRates;
+    const seconds = this.netAt ? Math.max(0.2, (now - this.netAt) / 1000) : 0;
+    const rates = new Map<number, { in: number; out: number }>();
+    if (seconds) {
+      for (const [pid, c] of counters) {
+        const before = this.netLast.get(pid);
+        if (before) rates.set(pid, { in: delta(c.in, before.in) / seconds, out: delta(c.out, before.out) / seconds });
+      }
+    }
+    this.netAt = now;
+    this.netLast = counters;
+    this.netRates = rates;
+    return rates;
   }
 
   private async tick() {
@@ -247,15 +330,42 @@ export class Sampler {
 
   private async sample() {
     if (IS_WIN) return this.sampleWindows();
-    const [ps, nettop, memory, sysNet, sysDisk, gpu] = await Promise.all([
-      readPs(),
-      readNettop().catch(() => new Map<number, { in: number; out: number }>()),
-      readMemory(),
+    const full = this.full();
+    const [sample, netRates, sysNet, sysDisk, gpu] = await Promise.all([
+      readNative(),
+      this.networkRates(),
       readInterfaces().catch(() => ({ in: 0, out: 0 })),
       readDiskIo().catch(() => ({ read: 0, write: 0 })),
-      readGpu().catch(() => null),
+      // GPU load only shows in the Performance view; every other tick is smooth enough for its chart.
+      full && this.gpuTick++ % 2 === 0 ? readGpu().catch(() => null) : Promise.resolve(this.lastGpu),
     ]);
-    const native: NativeTable = (await readNative(ps.map((p) => p.pid))) ?? {};
+    this.lastGpu = gpu;
+    let ps: PsRow[];
+    let memory: MemoryStats;
+    let native: NativeTable = {};
+    if (sample) {
+      // libproc lists everything; ps only fills CPU and memory for processes it can't inspect.
+      const needPs = Object.values(sample.procs).some((p) => !p.inspectable);
+      const [counters] = await Promise.all([needPs ? readPsCounters() : Promise.resolve(new Map()), loadUserNames()]);
+      ps = [];
+      for (const [key, info] of Object.entries(sample.procs)) {
+        const pid = Number(key);
+        const fallback = counters.get(pid);
+        if (info.inspectable) native[pid] = info;
+        ps.push({
+          pid,
+          ppid: info.ppid,
+          uid: info.uid,
+          user: userNames.get(info.uid) ?? String(info.uid),
+          cpuNs: info.inspectable ? info.cpuNs : (fallback?.cpuNs ?? 0),
+          rss: fallback?.rss ?? 0,
+          comm: info.path || info.comm,
+        });
+      }
+      memory = memoryFromNative(sample.memory);
+    } else {
+      [ps, memory] = await Promise.all([readPs(), readMemory()]);
+    }
     this.native = Object.keys(native).length > 0;
     const at = Date.now();
     const prev = this.prev;
@@ -267,7 +377,7 @@ export class Sampler {
       diskRead: new Map(),
       diskWrite: new Map(),
       energy: new Map(),
-      net: nettop,
+      net: new Map(),
       sysDisk,
       sysNet,
     };
@@ -307,8 +417,7 @@ export class Sampler {
         }
       }
       const cpu = prev && dt ? (delta(cpuNs, prev.cpu.get(p.pid)) / (dt * 1e9)) * 100 : 0;
-      const net = nettop.get(p.pid);
-      const prevNet = prev?.net.get(p.pid);
+      const net = netRates.get(p.pid);
       const name = basename(path) || p.comm;
       const bundlePath = outermostBundle(path);
       const bundle = bundlePath ? getBundleSync(bundlePath) : undefined;
@@ -324,8 +433,8 @@ export class Sampler {
         memory: n?.footprint || p.rss,
         diskRead,
         diskWrite,
-        netIn: net && prevNet && dt ? delta(net.in, prevNet.in) / dt : 0,
-        netOut: net && prevNet && dt ? delta(net.out, prevNet.out) / dt : 0,
+        netIn: net?.in ?? 0,
+        netOut: net?.out ?? 0,
         power,
         kind,
         safety: safetyFor(p.pid === 0 ? "kernel_task" : name, kind, p.uid),

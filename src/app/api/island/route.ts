@@ -8,6 +8,6 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const requested = url.searchParams.get("metric") as Metric | null;
   const metric = requested && METRICS.has(requested) ? requested : "cpu";
-  const [snapshot, storage] = await Promise.all([sampler().current(), storageUsage()]);
+  const [snapshot, storage] = await Promise.all([sampler().current("light", { network: metric === "network" }), storageUsage()]);
   return Response.json(islandData(snapshot, metric, storage), { headers: { "cache-control": "no-store" } });
 }
