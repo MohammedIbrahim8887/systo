@@ -2,6 +2,7 @@ import { cpSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { arch } from 'node:os';
+import { readFileSync } from 'node:fs';
 
 const root = resolve(import.meta.dirname, '..');
 process.chdir(root);
@@ -43,7 +44,7 @@ writeFileSync(join(contents, 'Info.plist'), `<?xml version="1.0" encoding="UTF-8
 <key>CFBundleDisplayName</key><string>Systo Installer</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleVersion</key><string>1</string>
-<key>CFBundleShortVersionString</key><string>0.1.0</string>
+<key>CFBundleShortVersionString</key><string>${JSON.parse(readFileSync('package.json', 'utf8')).version}</string>
 <key>CFBundleIconFile</key><string>Installer</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>NSHighResolutionCapable</key><true/>

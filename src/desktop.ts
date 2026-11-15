@@ -5,6 +5,8 @@ import Electrobun, { BrowserWindow, Tray, Utils } from "electrobun/main";
 import { IslandController } from "./shell/island";
 import { WinIslandController } from "./shell/island-win";
 import { TRAY_ICON_PNG, TRAY_ICON_PNG_WINDOWS } from "./shell/tray-icon";
+import { AppUpdater } from "./shell/updater";
+import type { UpdateState } from "./lib/update-types";
 
 const IS_WINDOWS = process.platform === "win32";
 
@@ -71,7 +73,7 @@ export default defineDesktop<BrowserWindow>({
     let main: BrowserWindow | null = window;
     let tray: Tray | null = null;
 
-    const shellState = () => ({ desktop: true, island: island.active, notch: island.notch });
+    const shellState = () => ({ desktop: true, island: island.active, notch: island.notch, update: updater.state });
 
     const pushShellState = (target: BrowserWindow | null) => {
       target?.webview.executeJavascript(
@@ -87,6 +89,17 @@ export default defineDesktop<BrowserWindow>({
         island.collapse();
         openMain();
       } else if (command.type === "collapse-island") island.collapse();
+    };
+
+    const updater = new AppUpdater(() => {
+      pushShellState(main);
+      updateTray();
+    });
+    // /api/update reaches the updater through the shared process, like shell commands.
+    (globalThis as { __systoUpdater?: { state: () => UpdateState; check: () => Promise<void>; install: () => Promise<void> } }).__systoUpdater = {
+      state: () => updater.state,
+      check: () => updater.check(),
+      install: () => updater.install(),
     };
 
     const island = IS_WINDOWS ? new WinIslandController(server.origin, handle) : new IslandController(server.origin, handle);
@@ -125,9 +138,19 @@ export default defineDesktop<BrowserWindow>({
     };
 
     const updateTray = () => {
+      const update = updater.state;
       tray?.setMenu([
         { type: "normal", label: "Open Systo", action: "open" },
         { type: "normal", label: "Show Dynamic Island", action: "island", checked: island.active },
+        { type: "divider" },
+        update.phase === "ready"
+          ? { type: "normal", label: `Restart to Update${update.latest ? ` to ${update.latest}` : ""}`, action: "install-update" }
+          : {
+              type: "normal",
+              label: update.phase === "checking" ? "Checking for Updates…" : update.phase === "downloading" ? "Downloading Update…" : "Check for Updates…",
+              action: "check-update",
+              enabled: update.phase !== "unavailable" && update.phase !== "checking" && update.phase !== "downloading",
+            },
         { type: "divider" },
         { type: "normal", label: "Quit Systo", action: "quit" },
       ]);
@@ -153,12 +176,17 @@ export default defineDesktop<BrowserWindow>({
         const action = event.data?.action;
         if (action === "open") openMain();
         else if (action === "island") setIsland(!island.active);
+        else if (action === "check-update") void updater.check();
+        else if (action === "install-update") void updater.install();
         else if (action === "quit") Utils.quit();
       });
       updateTray();
     } catch (error) {
       console.error("[systo] tray unavailable", error);
     }
+
+    // Starts after the tray exists, since every state change refreshes its menu.
+    void updater.start();
 
     Electrobun.events.on("reopen", () => openMain());
 

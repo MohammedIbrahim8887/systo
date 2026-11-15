@@ -87,6 +87,34 @@ declare module "electrobun/main" {
   const Electrobun: {
     events: { on(name: string, handler: (event: { data?: unknown; response?: unknown }) => void): void };
   };
+  export interface UpdateInfo {
+    version: string;
+    hash: string;
+    updateAvailable: boolean;
+    updateReady: boolean;
+    error: string;
+  }
+
+  export interface LocalUpdateInfo {
+    version: string;
+    hash: string;
+    baseUrl: string;
+    channel: string;
+    name: string;
+    identifier: string;
+  }
+
+  export const Updater: {
+    getLocalInfo(): Promise<LocalUpdateInfo>;
+    checkForUpdate(): Promise<UpdateInfo>;
+    downloadUpdate(): Promise<void>;
+    applyUpdate(): Promise<void>;
+    updateInfo(): UpdateInfo;
+    onStatusChange(
+      callback: ((entry: { status: string; message: string; timestamp: number; details?: { progress?: number; errorMessage?: string } }) => void) | null,
+    ): void;
+  };
+
   export default Electrobun;
 }
 

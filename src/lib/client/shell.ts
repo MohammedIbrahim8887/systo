@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from "react";
 import type { Metric } from "../types";
+import type { UpdateState } from "../update-types";
 
 /** State the Electrobun shell pushes into the page with executeJavascript. */
 export interface ShellState {
   desktop: boolean;
   island: boolean;
   notch: boolean;
+  /** Pushed by the shell whenever the updater changes state (see shell/updater.ts). */
+  update?: UpdateState;
 }
 
 declare global {
@@ -49,4 +52,18 @@ export function useShellState(): ShellState | null {
     return () => window.removeEventListener("systo:shell", read);
   }, []);
   return state;
+}
+
+/** Asks the shell's updater to check now, or to restart into a downloaded update. */
+export async function sendUpdateAction(action: "check" | "install"): Promise<UpdateState | null> {
+  try {
+    const response = await fetch("/api/update", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    return (await response.json()) as UpdateState;
+  } catch {
+    return null;
+  }
 }

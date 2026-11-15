@@ -9,7 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useSettings } from "@/lib/client/settings";
-import { sendShellCommand, useShellState } from "@/lib/client/shell";
+import { sendShellCommand, sendUpdateAction, useShellState } from "@/lib/client/shell";
+import { Button } from "@/components/ui/button";
+import type { UpdateState } from "@/lib/update-types";
 
 function Row({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
@@ -70,6 +72,71 @@ function useAutostart(open: boolean) {
   return { state, pending, set };
 }
 
+const CHANGELOG_URL = "https://systo.mohammedibrahim.dev/changelog";
+
+function ago(at?: number) {
+  if (!at) return "";
+  const minutes = Math.round((Date.now() - at) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 24 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`;
+}
+
+function updateHint(update: UpdateState | undefined, desktop: boolean): string {
+  if (!desktop || !update || update.phase === "unavailable") return "Available in the installed app.";
+  const current = update.version ? `Systo ${update.version}` : "Systo";
+  switch (update.phase) {
+    case "checking":
+      return `${current} · Checking for updates…`;
+    case "downloading":
+      return `Downloading ${update.latest ?? "the update"}${update.progress ? ` · ${update.progress}%` : "…"}`;
+    case "ready":
+      return `${update.latest ?? "A new version"} is ready. Restart Systo to finish updating.`;
+    case "installing":
+      return "Restarting into the new version…";
+    case "up-to-date":
+      return `${current} is up to date${update.checkedAt ? ` · checked ${ago(update.checkedAt)}` : ""}.`;
+    case "error":
+      return `${current} · ${update.error ?? "Couldn't check for updates."}`;
+    default:
+      return `${current} · Checks automatically and downloads in the background.`;
+  }
+}
+
+/** Updates: status from the shell, a manual check, and restart-to-install once one is downloaded. */
+function UpdatesRow({ update, desktop }: { update?: UpdateState; desktop: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const usable = desktop && update && update.phase !== "unavailable";
+  const working = update?.phase === "checking" || update?.phase === "downloading" || update?.phase === "installing";
+  const act = async (action: "check" | "install") => {
+    setBusy(true);
+    const next = await sendUpdateAction(action);
+    setBusy(false);
+    if (!next) toast.error("Couldn't reach the updater.");
+    else if (action === "check" && next.phase === "error") toast.error(next.error ?? "Couldn't check for updates.");
+    else if (action === "check" && next.phase === "up-to-date") toast.success(`Systo ${next.version} is the latest version.`);
+  };
+  return (
+    <Row title="Updates" hint={updateHint(update, desktop)}>
+      <div className="flex items-center gap-1.5">
+        <Button variant="ghost" size="sm" className="h-8 text-[12px]" onClick={() => window.open(CHANGELOG_URL, "_blank")}>
+          What's new
+        </Button>
+        {update?.phase === "ready" ? (
+          <Button size="sm" className="h-8 text-[12px]" disabled={busy} onClick={() => void act("install")}>
+            Restart to update
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" className="h-8 text-[12px]" disabled={!usable || busy || working} onClick={() => void act("check")}>
+            {update?.phase === "checking" || busy ? "Checking…" : "Check now"}
+          </Button>
+        )}
+      </div>
+    </Row>
+  );
+}
+
 export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { settings, update } = useSettings();
   const { theme, setTheme } = useTheme();
@@ -84,6 +151,7 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
           <DialogDescription>Saved on this {OS.device}.</DialogDescription>
         </DialogHeader>
         <div className="divide-y">
+          <UpdatesRow update={shell?.update} desktop={Boolean(shell?.desktop)} />
           <Row
             title={IS_WINDOWS ? "Open at sign-in" : "Open at login"}
             hint={

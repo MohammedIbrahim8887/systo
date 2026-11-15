@@ -2,12 +2,13 @@
 
 import { OS, isModKey } from "@/lib/platform";
 import { useEffect, useState, type ReactNode } from "react";
-import { ActivityIcon, HardDriveIcon, HistoryIcon, ListTreeIcon, PowerIcon, SettingsIcon, type LucideIcon } from "lucide-react";
+import { ActivityIcon, ArrowDownToLineIcon, HardDriveIcon, HistoryIcon, ListTreeIcon, PowerIcon, SettingsIcon, type LucideIcon } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Kbd } from "@/components/ui/kbd";
 import { SettingsProvider, useSettings } from "@/lib/client/settings";
 import { usePoll } from "@/lib/client/use-poll";
+import { sendUpdateAction, useShellState } from "@/lib/client/shell";
 import { formatBytes, formatPercent, formatRate } from "@/lib/format";
 import type { Snapshot } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -79,6 +80,29 @@ function MiniMeter({ label, value, values, max }: { label: string; value: string
   );
 }
 
+/** Shown once a new version has downloaded: one click restarts into it. */
+function UpdateNotice() {
+  const shell = useShellState();
+  const update = shell?.update;
+  if (!update || (update.phase !== "ready" && update.phase !== "installing")) return null;
+  return (
+    <div className="mx-2 mb-2 rounded-lg border bg-background/60 p-2.5">
+      <div className="flex items-center gap-1.5 text-[12px] font-medium">
+        <ArrowDownToLineIcon className="size-3.5" />
+        {update.latest ? `Systo ${update.latest} is ready` : "An update is ready"}
+      </div>
+      <button
+        type="button"
+        disabled={update.phase === "installing"}
+        onClick={() => void sendUpdateAction("install")}
+        className="mt-2 h-7 w-full rounded-md bg-primary text-[12px] font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+      >
+        {update.phase === "installing" ? "Restarting…" : "Restart to update"}
+      </button>
+    </div>
+  );
+}
+
 function Shell() {
   const [view, setView] = useState<View>("processes");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -131,6 +155,7 @@ function Shell() {
             )}
             {error && <p className="text-[11px] leading-snug text-muted-foreground">Can't reach the sampler: {error}</p>}
           </div>
+          <UpdateNotice />
           <div className="border-t px-2 py-2">
             <NavItem icon={SettingsIcon} label="Settings" onClick={() => setSettingsOpen(true)} shortcut={`${OS.mod},`} />
           </div>

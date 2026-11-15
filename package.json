@@ -1,6 +1,6 @@
 {
   "name": "systo",
-  "version": "0.2.0-beta.1",
+  "version": "0.3.0",
   "private": true,
   "scripts": {
     "dev": "farm dev --desktop",
@@ -41,5 +41,11 @@
   },
   "packageManager": "pnpm@11.9.0",
   "productName": "Systo",
-  "description": "A simple, monochrome process manager for macOS and Windows with a Dynamic Island."
+  "description": "A simple, monochrome process manager for macOS and Windows with a Dynamic Island.",
+  "electrobun": {
+    "release": {
+      "baseUrl": "https://github.com/MohammedIbrahim8887/systo/releases/latest/download",
+      "generatePatch": false
+    }
+  }
 }

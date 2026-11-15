@@ -19,6 +19,8 @@ import type { GET as GET_snapshot } from "../app/api/snapshot/route";
 import type { GET as GET_startup } from "../app/api/startup/route";
 import type { POST as POST_startup } from "../app/api/startup/route";
 import type { GET as GET_system } from "../app/api/system/route";
+import type { GET as GET_update } from "../app/api/update/route";
+import type { POST as POST_update } from "../app/api/update/route";
 import type { GET as GET_usage } from "../app/api/usage/route";
 
 // Type-only representation of your API routes
@@ -58,6 +60,10 @@ export type APIRouter = {
   };
   system: {
     get: typeof GET_system;
+  };
+  update: {
+    get: typeof GET_update;
+    post: typeof POST_update;
   };
   usage: {
     get: typeof GET_usage;
@@ -109,6 +115,10 @@ export const apiRoutes = [
   {
     path: "/api/system",
     methods: ["GET"],
+  },
+  {
+    path: "/api/update",
+    methods: ["GET", "POST"],
   },
   {
     path: "/api/usage",
