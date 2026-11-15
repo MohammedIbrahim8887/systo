@@ -714,7 +714,8 @@ $owner.Dispose()`,
       // Whichever dialog the desktop has; GTK through Python is there on any system that runs Systo's window.
       const gtk = `import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
+from gi.repository import GLib, Gtk
+GLib.set_prgname("Systo")
 d = Gtk.FileChooserNative.new(${JSON.stringify(title)}, None, Gtk.FileChooserAction.SELECT_FOLDER, None, None)
 if d.run() == Gtk.ResponseType.ACCEPT:
     print(d.get_filename(), end="")`;
