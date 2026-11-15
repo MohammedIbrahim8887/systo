@@ -145,7 +145,27 @@ export function Island({ params = {} }: { params?: IslandParams }) {
     }
   };
 
-  const { data } = usePoll<IslandData>(`/api/island?metric=${metric}`, expanded ? 1000 : 2000);
+  // Collapsed, the pill shows one number; a slower poll is plenty and lets the sampler idle down.
+  const { data } = usePoll<IslandData>(`/api/island?metric=${metric}`, expanded ? 1000 : 3000, false, { whenHidden: true });
+
+  // The panel only exists while open (plus its fade-out), so a collapsed island isn't re-rendering
+  // and animating rings and bars nobody can see.
+  const [panel, setPanel] = useState<"hidden" | "mounted" | "visible">("hidden");
+  useEffect(() => {
+    if (expanded) {
+      setPanel("mounted");
+      let inner = 0;
+      const outer = requestAnimationFrame(() => (inner = requestAnimationFrame(() => setPanel("visible"))));
+      return () => {
+        cancelAnimationFrame(outer);
+        cancelAnimationFrame(inner);
+      };
+    }
+    setPanel((p) => (p === "hidden" ? p : "mounted"));
+    const timer = setTimeout(() => setPanel("hidden"), 260);
+    return () => clearTimeout(timer);
+  }, [expanded]);
+  const shown = panel === "visible";
 
   const { notchWidth, notchHeight } = geometry;
   const wing = 62;
@@ -230,15 +250,16 @@ export function Island({ params = {} }: { params?: IslandParams }) {
         </div>
 
         {/* Expanded panel. */}
+        {panel !== "hidden" && (
         <div
           className="absolute inset-0 flex flex-col px-4 pb-3.5 transition-[opacity,transform]"
           style={{
-            opacity: expanded ? 1 : 0,
-            transform: expanded ? "scale(1)" : "scale(0.96)",
+            opacity: shown ? 1 : 0,
+            transform: shown ? "scale(1)" : "scale(0.96)",
             transformOrigin: "top center",
-            transitionDuration: expanded ? "260ms" : "120ms",
-            transitionDelay: expanded ? "140ms" : "0ms",
-            pointerEvents: expanded ? "auto" : "none",
+            transitionDuration: shown ? "260ms" : "120ms",
+            transitionDelay: shown ? "140ms" : "0ms",
+            pointerEvents: shown ? "auto" : "none",
           }}
         >
           <div className="flex shrink-0 items-center justify-between" style={{ height: notchHeight }}>
@@ -317,6 +338,7 @@ export function Island({ params = {} }: { params?: IslandParams }) {
             </button>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

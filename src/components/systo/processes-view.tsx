@@ -95,6 +95,11 @@ function metricCells(values: { cpu: number; memory: number; disk: number; networ
   );
 }
 
+/** Fixed row heights (h-8 / h-9 / h-8), so only the rows in view need to exist in the DOM. */
+const HEADER_HEIGHT = 58;
+const ROW_HEIGHT: Record<Row["type"], number> = { section: 32, group: 36, process: 32 };
+const OVERSCAN_PX = 360;
+
 const GroupRow = memo(function GroupRow({
   group,
   expanded,
@@ -265,6 +270,7 @@ export function ProcessesView({ snapshot }: { snapshot: Snapshot | null }) {
   const [menuTarget, setMenuTarget] = useState<Target | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState({ top: 0, height: 800 });
 
   const totals = snapshot?.totals;
   const cpuDivisor = settings.cpuMode === "total" ? (totals?.cores ?? 1) : 1;
@@ -322,6 +328,47 @@ export function ProcessesView({ snapshot }: { snapshot: Snapshot | null }) {
     }
     return out;
   }, [snapshot, query, filter, sort, expanded, collapsedSections]);
+
+  const offsets = useMemo(() => {
+    const out = new Array<number>(rows.length + 1);
+    out[0] = 0;
+    for (let i = 0; i < rows.length; i++) out[i + 1] = out[i] + ROW_HEIGHT[rows[i].type];
+    return out;
+  }, [rows]);
+
+  const [first, last] = useMemo(() => {
+    const from = Math.max(0, viewport.top - HEADER_HEIGHT - OVERSCAN_PX);
+    const to = viewport.top - HEADER_HEIGHT + viewport.height + OVERSCAN_PX;
+    let lo = 0;
+    let hi = rows.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (offsets[mid + 1] <= from) lo = mid + 1;
+      else hi = mid;
+    }
+    let end = lo;
+    while (end < rows.length && offsets[end] < to) end++;
+    return [lo, end];
+  }, [offsets, rows.length, viewport]);
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    let frame = 0;
+    const measure = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => setViewport({ top: list.scrollTop, height: list.clientHeight }));
+    };
+    measure();
+    list.addEventListener("scroll", measure, { passive: true });
+    const observer = new ResizeObserver(measure);
+    observer.observe(list);
+    return () => {
+      cancelAnimationFrame(frame);
+      list.removeEventListener("scroll", measure);
+      observer.disconnect();
+    };
+  }, []);
 
   const selectable = useMemo(() => rows.filter((r): r is Exclude<Row, { type: "section" }> => r.type !== "section"), [rows]);
 
@@ -448,10 +495,19 @@ export function ProcessesView({ snapshot }: { snapshot: Snapshot | null }) {
     return () => window.removeEventListener("keydown", onGlobalKey);
   }, []);
 
+  // Rows outside the window aren't rendered, so keep the selection in view by offset, not by DOM lookup.
   useEffect(() => {
-    if (!selection || !listRef.current) return;
-    const selector = selection.pid ? `[data-pid="${selection.pid}"]` : `[data-group="${CSS.escape(selection.groupId)}"]`;
-    listRef.current.querySelector(selector)?.scrollIntoView({ block: "nearest" });
+    const list = listRef.current;
+    if (!selection || !list) return;
+    const index = rows.findIndex((r) =>
+      selection.pid ? r.type === "process" && r.process.pid === selection.pid : r.type === "group" && r.group.id === selection.groupId,
+    );
+    if (index === -1) return;
+    const top = HEADER_HEIGHT + offsets[index];
+    const bottom = HEADER_HEIGHT + offsets[index + 1];
+    if (top - HEADER_HEIGHT < list.scrollTop) list.scrollTop = top - HEADER_HEIGHT;
+    else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection]);
 
   const memoryPercent = totals ? (totals.memoryUsed / totals.memoryTotal) * 100 : 0;
@@ -569,7 +625,7 @@ export function ProcessesView({ snapshot }: { snapshot: Snapshot | null }) {
             onContextMenu={onContextMenu}
             className="scrollbar-thin relative min-h-0 flex-1 overflow-y-auto outline-none"
           >
-            <div className={cn(GRID, "sticky top-0 z-10 h-[58px] border-b bg-background/95 backdrop-blur")}>
+            <div className={cn(GRID, "sticky top-0 z-10 h-[58px] border-b bg-background")}>
               <HeaderCell label="Name" sortKey="name" sort={sort} onSort={onSort} align="left" sub={totals ? `${formatCount(visibleGroups)} shown` : undefined} />
               <HeaderCell label="Type" sortKey="kind" sort={sort} onSort={onSort} align="left" />
               <HeaderCell label="CPU" value={totals ? formatPercent(totals.cpu, 0) : "–"} sortKey="cpu" sort={sort} onSort={onSort} />
@@ -586,8 +642,9 @@ export function ProcessesView({ snapshot }: { snapshot: Snapshot | null }) {
                 <p className="text-xs text-muted-foreground">Try an app name, a process name, or a PID.</p>
               </div>
             )}
+            {scale && rows.length > 0 && <div aria-hidden style={{ height: offsets[first] }} />}
             {scale &&
-              rows.map((row) => {
+              rows.slice(first, last).map((row) => {
                 if (row.type === "section") return <SectionRow key={row.key} section={row.section} count={row.count} collapsed={row.collapsed} />;
                 if (row.type === "group")
                   return (
@@ -602,6 +659,7 @@ export function ProcessesView({ snapshot }: { snapshot: Snapshot | null }) {
                   );
                 return <ProcessLine key={row.key} process={row.process} last={row.last} selected={selection?.pid === row.process.pid} scale={scale} />;
               })}
+            {scale && rows.length > 0 && <div aria-hidden style={{ height: offsets[rows.length] - offsets[last] }} />}
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-56">
