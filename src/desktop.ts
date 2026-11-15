@@ -2,13 +2,33 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { defineDesktop } from "@farm.js/core/desktop";
 import Electrobun, { BrowserWindow, Tray, Utils } from "electrobun/main";
+import { hyprlandAvailable } from "./lib/server/linux/hyprland";
 import { IslandController } from "./shell/island";
+import { LinuxIslandController } from "./shell/island-linux";
 import { WinIslandController } from "./shell/island-win";
 import { TRAY_ICON_PNG, TRAY_ICON_PNG_WINDOWS } from "./shell/tray-icon";
 import { AppUpdater } from "./shell/updater";
 import type { UpdateState } from "./lib/update-types";
 
 const IS_WINDOWS = process.platform === "win32";
+const IS_MAC = process.platform === "darwin";
+const IS_LINUX = process.platform === "linux";
+/**
+ * The island needs the OS to float a window above everything: AppKit on macOS, Win32 on Windows,
+ * and on Linux a compositor that can be asked to, which today is Hyprland. Elsewhere Systo is the
+ * main window and the tray.
+ */
+const ISLAND_SUPPORTED = IS_MAC || IS_WINDOWS || (IS_LINUX && hyprlandAvailable());
+
+interface Island {
+  readonly active: boolean;
+  readonly notch: boolean;
+  show(): void;
+  hide(): void;
+  collapse(): void;
+}
+
+const NO_ISLAND: Island = { active: false, notch: false, show() {}, hide() {}, collapse() {} };
 
 interface ShellPrefs {
   island: boolean;
@@ -41,7 +61,9 @@ function trayIconPath() {
   const file = join(Utils.paths.userData, "tray-icon.png");
   try {
     mkdirSync(Utils.paths.userData, { recursive: true });
-    writeFileSync(file, Buffer.from(IS_WINDOWS ? TRAY_ICON_PNG_WINDOWS : TRAY_ICON_PNG, "base64"));
+    // macOS tints its black template to match the menu bar. Windows and Linux panels show the
+    // image as it is, so they get the outlined one that reads on dark and light bars alike.
+    writeFileSync(file, Buffer.from(IS_MAC ? TRAY_ICON_PNG : TRAY_ICON_PNG_WINDOWS, "base64"));
   } catch {
     // tray falls back to its title
   }
@@ -73,7 +95,7 @@ export default defineDesktop<BrowserWindow>({
     let main: BrowserWindow | null = window;
     let tray: Tray | null = null;
 
-    const shellState = () => ({ desktop: true, island: island.active, notch: island.notch, update: updater.state });
+    const shellState = () => ({ desktop: true, island: island.active, islandSupported: ISLAND_SUPPORTED, notch: island.notch, update: updater.state });
 
     const pushShellState = (target: BrowserWindow | null) => {
       target?.webview.executeJavascript(
@@ -102,7 +124,13 @@ export default defineDesktop<BrowserWindow>({
       install: () => updater.install(),
     };
 
-    const island = IS_WINDOWS ? new WinIslandController(server.origin, handle) : new IslandController(server.origin, handle);
+    const island: Island = IS_WINDOWS
+      ? new WinIslandController(server.origin, handle)
+      : IS_MAC
+        ? new IslandController(server.origin, handle)
+        : ISLAND_SUPPORTED
+          ? new LinuxIslandController(server.origin, handle)
+          : NO_ISLAND;
 
     // The server runs in this process. Pages also POST commands to /api/shell, which hands them over
     // here, in case a platform's webview doesn't report in-page navigations. Nonces dedupe the two.
@@ -141,7 +169,7 @@ export default defineDesktop<BrowserWindow>({
       const update = updater.state;
       tray?.setMenu([
         { type: "normal", label: "Open Systo", action: "open" },
-        { type: "normal", label: "Show Dynamic Island", action: "island", checked: island.active },
+        ...(ISLAND_SUPPORTED ? [{ type: "normal" as const, label: "Show Dynamic Island", action: "island", checked: island.active }] : []),
         { type: "divider" },
         update.phase === "ready"
           ? { type: "normal", label: `Restart to Update${update.latest ? ` to ${update.latest}` : ""}`, action: "install-update" }
@@ -157,6 +185,7 @@ export default defineDesktop<BrowserWindow>({
     };
 
     const setIsland = (enabled: boolean) => {
+      if (!ISLAND_SUPPORTED) return;
       if (enabled) island.show();
       else island.hide();
       prefs.island = enabled;
@@ -169,9 +198,9 @@ export default defineDesktop<BrowserWindow>({
     pushShellState(window);
 
     try {
-      tray = IS_WINDOWS
-        ? new Tray({ title: "Systo", image: trayIconPath(), template: false, width: 16, height: 16 })
-        : new Tray({ image: trayIconPath(), template: true, width: 18, height: 18 });
+      tray = IS_MAC
+        ? new Tray({ image: trayIconPath(), template: true, width: 18, height: 18 })
+        : new Tray({ title: "Systo", image: trayIconPath(), template: false, width: 16, height: 16 });
       tray.on("tray-clicked", (event) => {
         const action = event.data?.action;
         if (action === "open") openMain();
@@ -191,7 +220,7 @@ export default defineDesktop<BrowserWindow>({
     Electrobun.events.on("reopen", () => openMain());
 
     // The island shares the main window's session cookie, which the handshake sets on first load.
-    if (prefs.island) {
+    if (prefs.island && ISLAND_SUPPORTED) {
       let started = false;
       const start = () => {
         if (started) return;

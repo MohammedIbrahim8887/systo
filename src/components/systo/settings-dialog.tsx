@@ -1,6 +1,6 @@
 "use client";
 
-import { OS, IS_WINDOWS } from "@/lib/platform";
+import { OS, IS_WINDOWS, byOS } from "@/lib/platform";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useTheme } from "@farm.js/core/theme/client";
@@ -157,7 +157,7 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
             hint={
               autostart.state && !autostart.state.available
                 ? autostart.state.reason
-                : `Start Systo automatically when you ${IS_WINDOWS ? "sign in to Windows" : "log in to your Mac"}.`
+                : `Start Systo automatically when you ${byOS("log in to your Mac", "sign in to Windows", "log in")}.`
             }
           >
             <Switch
@@ -214,14 +214,20 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
             title="Dynamic Island"
             hint={
               shell?.desktop
-                ? shell.notch
+                ? !shell.islandSupported
+                  ? "Needs a compositor that can float it above your windows. Hyprland is supported today."
+                  : shell.notch
                   ? "Hover the notch to see your top 3 apps."
-                  : IS_WINDOWS ? "A floating pill at the top center of your main display. It hides while something is fullscreen." : "No notch on this display; the island sits at the top of the menu bar."
+                  : byOS(
+                      "No notch on this display; the island sits at the top of the menu bar.",
+                      "A floating pill at the top center of your main display. It hides while something is fullscreen.",
+                      "A floating pill under the bar at the top center of your display. It hides while something is fullscreen.",
+                    )
                 : "Available in the desktop app."
             }
           >
             <Switch
-              disabled={!shell?.desktop}
+              disabled={!shell?.desktop || !shell.islandSupported}
               checked={Boolean(shell?.island)}
               onCheckedChange={(enabled) => sendShellCommand({ type: "island", enabled })}
             />
