@@ -1,4 +1,4 @@
-import { Updater } from "electrobun/main";
+import { Updater, Utils } from "electrobun/main";
 import type { UpdateState } from "../lib/update-types";
 
 /**
@@ -15,7 +15,15 @@ export class AppUpdater {
   private running: Promise<void> | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(private onChange: (state: UpdateState) => void) {}
+  /**
+   * @param stopServer Shuts the app's server down. Farm vetoes the first quit request so it can
+   *   do that itself, and Electrobun's updater takes a veto to mean "restart cancelled": the app
+   *   would close without installing anything. Stopping the server first lets the restart through.
+   */
+  constructor(
+    private onChange: (state: UpdateState) => void,
+    private stopServer?: () => Promise<unknown>,
+  ) {}
 
   async start() {
     const info = await Updater.getLocalInfo().catch(() => null);
@@ -69,9 +77,14 @@ export class AppUpdater {
     if (this.state.phase !== "ready") return;
     this.set({ ...this.state, phase: "installing" });
     try {
+      await this.stopServer?.();
       await Updater.applyUpdate();
+      const failure = Updater.updateInfo().error;
+      if (failure) throw new Error(failure);
     } catch (error) {
       this.set({ ...this.state, phase: "error", error: friendly(error) });
+      // With the server already stopped the window can't recover; reopening Systo retries.
+      if (this.stopServer) Utils.quit();
     }
   }
 

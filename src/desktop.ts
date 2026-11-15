@@ -113,10 +113,14 @@ export default defineDesktop<BrowserWindow>({
       } else if (command.type === "collapse-island") island.collapse();
     };
 
-    const updater = new AppUpdater(() => {
-      pushShellState(main);
-      updateTray();
-    });
+    const updater = new AppUpdater(
+      () => {
+        pushShellState(main);
+        updateTray();
+      },
+      // Added to Farm's desktop template by patches/@farm.js__desktop: see AppUpdater.
+      (server as { stop?: () => Promise<unknown> }).stop,
+    );
     // /api/update reaches the updater through the shared process, like shell commands.
     (globalThis as { __systoUpdater?: { state: () => UpdateState; check: () => Promise<void>; install: () => Promise<void> } }).__systoUpdater = {
       state: () => updater.state,
