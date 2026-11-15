@@ -1,4 +1,5 @@
 import { BrowserWindow } from "electrobun/main";
+import { findWindow, setClickThrough } from "./x11";
 import { clients, cursor, monitors, moveWindow, overlayRule, raiseWindow, setProp, workspaceFullscreen, xwaylandUnscaled, type HyprMonitor } from "../lib/server/linux/hyprland";
 
 /**
@@ -10,6 +11,11 @@ import { clients, cursor, monitors, moveWindow, overlayRule, raiseWindow, setPro
  * Electrobun only creates the window. Everything that makes it an overlay (floating, pinned to
  * every workspace, undecorated, unfocusable) is asked of the compositor, through a window rule
  * set before the window opens so it never flashes into the tiling layout.
+ *
+ * Staying out of the pointer's way takes two switches. `no_focus` makes Hyprland route clicks to
+ * the window beneath; but the island is an XWayland window, and when that window is XWayland
+ * too (Systo's own main window is) the X server decides between them and would pick the island,
+ * so its X input shape is emptied as well.
  */
 
 const TITLE = "Systo Island";
@@ -49,6 +55,8 @@ export class LinuxIslandController {
   private window: BrowserWindow | null = null;
   /** Hyprland's handle for the window, known a moment after it opens. */
   private address: string | null = null;
+  /** The same window's X id, or null if it isn't an X11 window. */
+  private xid: bigint | null = null;
   private placement: Placement | null = null;
   private monitor: string | null = null;
   private shown = false;
@@ -143,6 +151,7 @@ export class LinuxIslandController {
     this.poll = null;
     this.window = null;
     this.address = null;
+    this.xid = null;
     this.placement = null;
     this.shown = false;
     this.expanded = false;
@@ -159,9 +168,14 @@ export class LinuxIslandController {
     if (!this.window || !this.address || this.expanded === expanded) return;
     this.expanded = expanded;
     // Clicks reach the panel only while it's open; closed, they fall through to what's beneath.
-    if (expanded) await setProp(this.address, "no_focus", false);
+    if (expanded) await this.setInteractive(true);
     this.pushState();
-    if (!expanded) await setProp(this.address, "no_focus", true);
+    if (!expanded) await this.setInteractive(false);
+  }
+
+  private async setInteractive(interactive: boolean) {
+    if (this.xid) setClickThrough(this.xid, !interactive);
+    if (this.address) await setProp(this.address, "no_focus", !interactive);
   }
 
   /** Finds the window, then keeps it centered under the bar of its display, above other floating windows. */
@@ -171,7 +185,11 @@ export class LinuxIslandController {
     const client = list.find((c) => c.title === TITLE && c.pid === process.pid);
     if (!monitor || !client) return false;
     this.monitor = monitor.name;
-    this.address = client.address;
+    if (!this.address) {
+      this.address = client.address;
+      this.xid = client.xwayland ? findWindow(TITLE) : null;
+      await this.setInteractive(this.expanded);
+    }
     const [width, height] = client.size;
     const { centerX, top } = anchor(monitor);
     const x = Math.round(centerX - width / 2);
