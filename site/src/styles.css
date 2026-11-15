@@ -1,0 +1,43 @@
+/* The app's design system: Geist, OKLCH neutrals, light/dark themes and shadcn tokens. */
+@import "../../src/app/globals.css";
+
+@source "../../src/components/systo/logo.tsx";
+@source "../../src/components/ui/button.tsx";
+@source "./";
+
+/* A website, not an app window: text is selectable and links behave like links. */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 5rem;
+  }
+  html,
+  body {
+    height: auto;
+  }
+  body {
+    -webkit-user-select: auto;
+    user-select: auto;
+    cursor: auto;
+    overscroll-behavior: auto;
+    scrollbar-color: color-mix(in oklch, var(--foreground) 22%, transparent) transparent;
+  }
+  a,
+  button,
+  [role="button"] {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

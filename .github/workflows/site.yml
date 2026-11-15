@@ -1,0 +1,43 @@
+name: Site
+
+# Builds site/ and deploys it to Cloudflare Workers (static assets) at systo.mohammedibrahim.dev,
+# as configured in site/wrangler.jsonc. Needs two repository secrets: CLOUDFLARE_API_TOKEN (with
+# "Edit Cloudflare Workers" permissions) and CLOUDFLARE_ACCOUNT_ID.
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "CHANGELOG.md", "package.json", "src/app/globals.css", "src/components/**", "src/lib/**", ".github/workflows/site.yml"]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm --filter systo-site build
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: site
+          packageManager: pnpm
+          command: deploy

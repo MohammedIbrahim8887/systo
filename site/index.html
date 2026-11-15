@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Systo: see what your computer is doing</title>
+    <meta name="description" content="Systo is a calm, monochrome process manager for macOS and Windows, with a Dynamic Island that shows your busiest apps at a glance." />
+    <meta property="og:title" content="Systo: see what your computer is doing" />
+    <meta property="og:description" content="A calmer Activity Monitor and Task Manager, with a Dynamic Island." />
+    <meta property="og:image" content="https://systo.mohammedibrahim.dev/og.png" />
+    <meta property="og:url" content="https://systo.mohammedibrahim.dev/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <script>
+      // Follow the system appearance before first paint, like the app's "Auto" theme.
+      document.documentElement.dataset.theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/home.tsx"></script>
+  </body>
+</html>

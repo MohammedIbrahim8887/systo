@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["vite/client", "node"],
+    "paths": { "@/*": ["../src/*"] }
+  },
+  "include": ["src", "vite.config.ts", "../src/components/systo/logo.tsx", "../src/components/ui/button.tsx", "../src/lib/format.ts", "../src/lib/utils.ts"]
+}

@@ -1,11 +1,13 @@
 packages:
   - "."
+  - "site"
 
 allowBuilds:
   "@prisma/client": true
   esbuild: true
   sharp: true
   vue-demi: true
+  workerd: true
 
 minimumReleaseAgeExclude:
   - "@farm.js/*"

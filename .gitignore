@@ -26,3 +26,5 @@ dist/
 # macOS and review artifacts
 .DS_Store
 .impeccable/review/
+
+.wrangler/
