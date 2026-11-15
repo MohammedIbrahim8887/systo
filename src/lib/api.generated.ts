@@ -5,6 +5,8 @@
  * Server modules are imported only as types. Runtime data contains paths and methods only.
  */
 
+import type { GET as GET_autostart } from "../app/api/autostart/route";
+import type { POST as POST_autostart } from "../app/api/autostart/route";
 import type { GET as GET_disk } from "../app/api/disk/route";
 import type { POST as POST_disk } from "../app/api/disk/route";
 import type { POST as POST_end } from "../app/api/end/route";
@@ -21,6 +23,10 @@ import type { GET as GET_usage } from "../app/api/usage/route";
 
 // Type-only representation of your API routes
 export type APIRouter = {
+  autostart: {
+    get: typeof GET_autostart;
+    post: typeof POST_autostart;
+  };
   disk: {
     get: typeof GET_disk;
     post: typeof POST_disk;
@@ -60,6 +66,10 @@ export type APIRouter = {
 
 // Pass this schema-free manifest to createApiClients({ routes: apiRoutes }).
 export const apiRoutes = [
+  {
+    path: "/api/autostart",
+    methods: ["GET", "POST"],
+  },
   {
     path: "/api/disk",
     methods: ["GET", "POST"],

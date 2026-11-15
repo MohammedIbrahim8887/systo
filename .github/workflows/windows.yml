@@ -84,6 +84,13 @@ jobs:
           Shot "03-running"
           Get-Process | Where-Object { $_.Path -match "systo|webview" } | Select-Object Id, ProcessName, Path | Format-Table -AutoSize | Out-String -Width 400
 
+      - name: Open at sign-in toggle against the installed app
+        shell: pwsh
+        run: |
+          $bun = Get-ChildItem -Recurse "$env:LOCALAPPDATA\dev.systo.monitor" -Filter "bun.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $bun) { throw "Systo isn't installed" }
+          bun scripts/win-autostart-test.ts $bun.FullName
+
       - uses: actions/upload-artifact@v4
         with:
           name: Systo-Windows-x64

@@ -1,7 +1,8 @@
 "use client";
 
 import { OS, IS_WINDOWS } from "@/lib/platform";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { toast } from "sonner";
 import { useTheme } from "@farm.js/core/theme/client";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -22,10 +23,58 @@ function Row({ title, hint, children }: { title: string; hint?: string; children
   );
 }
 
+interface AutostartState {
+  available: boolean;
+  enabled: boolean;
+  reason?: string;
+}
+
+/** Whether Systo opens when you log in, read fresh each time Settings opens. */
+function useAutostart(open: boolean) {
+  const [state, setState] = useState<AutostartState | null>(null);
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetch("/api/autostart", { cache: "no-store" })
+      .then((r) => r.json() as Promise<AutostartState>)
+      .then((next) => !cancelled && setState(next))
+      .catch(() => !cancelled && setState({ available: false, enabled: false, reason: "Couldn't read this setting." }));
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const set = async (enabled: boolean) => {
+    if (!state) return;
+    setPending(true);
+    setState({ ...state, enabled });
+    try {
+      const response = await fetch("/api/autostart", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      const next = (await response.json()) as AutostartState;
+      setState(next);
+      if (next.enabled !== enabled) toast.error(`Couldn't turn ${enabled ? "on" : "off"} opening at ${IS_WINDOWS ? "sign-in" : "login"}.`);
+    } catch {
+      setState({ ...state, enabled: !enabled });
+      toast.error("Couldn't change this setting.");
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return { state, pending, set };
+}
+
 export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { settings, update } = useSettings();
   const { theme, setTheme } = useTheme();
   const shell = useShellState();
+  const autostart = useAutostart(open);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -35,6 +84,21 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
           <DialogDescription>Saved on this {OS.device}.</DialogDescription>
         </DialogHeader>
         <div className="divide-y">
+          <Row
+            title={IS_WINDOWS ? "Open at sign-in" : "Open at login"}
+            hint={
+              autostart.state && !autostart.state.available
+                ? autostart.state.reason
+                : `Start Systo automatically when you ${IS_WINDOWS ? "sign in to Windows" : "log in to your Mac"}.`
+            }
+          >
+            <Switch
+              aria-label={IS_WINDOWS ? "Open at sign-in" : "Open at login"}
+              disabled={!autostart.state?.available || autostart.pending}
+              checked={Boolean(autostart.state?.enabled)}
+              onCheckedChange={(enabled) => void autostart.set(enabled)}
+            />
+          </Row>
           <Row title="Update speed" hint="How often Systo samples processes.">
             <Select value={String(settings.interval)} onValueChange={(v) => update({ interval: Number(v) })}>
               <SelectTrigger size="sm" className="w-36">
