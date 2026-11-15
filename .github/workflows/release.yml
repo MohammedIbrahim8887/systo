@@ -1,0 +1,109 @@
+name: Release
+
+# Push a tag like v0.3.0 (matching package.json) to build both platforms and publish a GitHub
+# release. The in-app updater reads <platform>-update-v2.json and the archive beside it from
+# releases/latest/download, so every stable release must carry both platforms' update files.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check the tag matches package.json
+        run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
+      - name: Build the app and the installer disk image
+        run: pnpm build:installer
+      - name: Collect release files
+        run: |
+          mkdir -p release
+          cp dist/Systo-Installer-arm64.dmg release/
+          cp .farm/output/desktop/dist/update/stable-macos-arm64-* release/
+          ls -la release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: release/
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build the desktop app
+        run: pnpm build
+      - name: Package the installer and update files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release, payload | Out-Null
+          $zip = Get-ChildItem -Recurse .farm/output/desktop/dist -Filter "*Setup.zip" | Select-Object -First 1
+          if (-not $zip) { throw "Electrobun produced no setup zip" }
+          Expand-Archive $zip.FullName -DestinationPath payload -Force
+          $icon = Get-ChildItem -Recurse .farm/output/desktop/dist -Filter "app.ico" | Select-Object -First 1
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc "/DPayload=$((Resolve-Path payload).Path)" "/DAppVersion=$version" "/DIcon=$($icon.FullName)" installer/windows/systo.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          Copy-Item $zip.FullName release/Systo-Windows-x64.zip
+          Copy-Item .farm/output/desktop/dist/update/stable-win-x64-* release/
+          Get-ChildItem release | Format-Table Name, Length -AutoSize | Out-String -Width 200
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: release/
+
+  publish:
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            /^## \[/ { if (found) exit; if (index($0, "[" v "]")) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          test -s notes.md || echo "See CHANGELOG.md." > notes.md
+          {
+            echo
+            echo "### Checksums (SHA-256)"
+            echo '```'
+            (cd artifacts && sha256sum Systo-Installer-arm64.dmg Systo-Setup-x64.exe Systo-Windows-x64.zip)
+            echo '```'
+          } >> notes.md
+          cat notes.md
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=()
+          # Pre-releases (v1.2.0-beta.1) don't become "latest", so the updater ignores them.
+          [[ "$GITHUB_REF_NAME" == *-* ]] && flags+=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" artifacts/* --title "Systo ${GITHUB_REF_NAME#v}" --notes-file notes.md "${flags[@]}"
