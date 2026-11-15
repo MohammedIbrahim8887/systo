@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { output, run } from "./exec";
@@ -8,6 +8,7 @@ import { output, run } from "./exec";
  * - macOS: a LaunchAgent in ~/Library/LaunchAgents that runs `open -a Systo.app` at login. It needs
  *   no Automation permission (unlike System Events login items) and shows up in Login Items.
  * - Windows: a value under HKCU\…\Run pointing at the launcher, the entry Task Manager lists.
+ * - Linux: an XDG autostart entry in ~/.config/autostart that runs the launcher.
  * Only the packaged app can register itself; the dev server has no app to point at.
  */
 
@@ -37,6 +38,45 @@ function macApp(): string | null {
 function windowsLauncher(): string | null {
   const launcher = join(dirname(process.execPath), "launcher.exe");
   return /\\bun\.exe$/i.test(process.execPath) && existsSync(launcher) ? launcher : null;
+}
+
+/** The Electrobun launcher beside the bundled bun. */
+function linuxLauncher(): string | null {
+  const launcher = join(dirname(process.execPath), "launcher");
+  return /\/bun$/.test(process.execPath) && existsSync(launcher) ? launcher : null;
+}
+
+function linuxEntry() {
+  return join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "autostart", "dev.systo.monitor.desktop");
+}
+
+function linuxState(): AutostartState {
+  if (!linuxLauncher()) return { available: false, enabled: false, reason: "Available in the installed app." };
+  try {
+    // The Startup view turns an entry off by adding Hidden=true rather than deleting it.
+    return { available: true, enabled: !/^Hidden\s*=\s*true\s*$/m.test(readFileSync(linuxEntry(), "utf8")) };
+  } catch {
+    return { available: true, enabled: false };
+  }
+}
+
+function linuxSet(enabled: boolean): AutostartState {
+  const launcher = linuxLauncher();
+  if (!launcher) return { available: false, enabled: false, reason: "Available in the installed app." };
+  if (enabled) {
+    mkdirSync(dirname(linuxEntry()), { recursive: true });
+    // The icon Electrobun's installer puts beside the app, the same one its launcher entry uses.
+    const icon = join(dirname(launcher), "..", "Resources", "appIcon.png");
+    const lines = ["[Desktop Entry]", "Type=Application", "Name=Systo", "Comment=Process manager", `Exec="${launcher}"`, ...(existsSync(icon) ? [`Icon=${icon}`] : []), "Terminal=false"];
+    writeFileSync(linuxEntry(), `${lines.join("\n")}\n`);
+  } else {
+    try {
+      unlinkSync(linuxEntry());
+    } catch {
+      // already gone
+    }
+  }
+  return linuxState();
 }
 
 const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -118,11 +158,13 @@ async function windowsSet(enabled: boolean): Promise<AutostartState> {
 export function autostartState(): Promise<AutostartState> {
   if (process.platform === "win32") return windowsState();
   if (process.platform === "darwin") return macState();
+  if (process.platform === "linux") return Promise.resolve(linuxState());
   return Promise.resolve({ available: false, enabled: false, reason: "Not supported on this system." });
 }
 
 export function setAutostart(enabled: boolean): Promise<AutostartState> {
   if (process.platform === "win32") return windowsSet(enabled);
   if (process.platform === "darwin") return macSet(enabled);
+  if (process.platform === "linux") return Promise.resolve(linuxSet(enabled));
   return autostartState();
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { OS, IS_WINDOWS } from "@/lib/platform";
+import { OS, IS_LINUX, IS_WINDOWS, byOS } from "@/lib/platform";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { CopyIcon, FolderOpenIcon, MoreHorizontalIcon, RefreshCwIcon, SearchIcon, SettingsIcon, ShieldIcon, SquareIcon } from "lucide-react";
@@ -30,7 +30,13 @@ import { AppIcon } from "./app-icon";
 
 type Filter = "all" | "login" | "background" | "system";
 
-const SECTIONS: Array<{ kind: StartupKind; title: string; hint: string }> = IS_WINDOWS
+const SECTIONS: Array<{ kind: StartupKind; title: string; hint: string }> = IS_LINUX
+  ? [
+      { kind: "login-item", title: "Autostart apps", hint: "Start when you log in to your desktop" },
+      { kind: "agent", title: "Session services", hint: "systemd user services that start with your session" },
+      { kind: "daemon", title: "System services", hint: "systemd services that start at boot; changes need an administrator password" },
+    ]
+  : IS_WINDOWS
   ? [
       { kind: "login-item", title: "Your startup apps", hint: "Start when you sign in" },
       { kind: "agent", title: "For everyone on this PC", hint: "Start for every user; changes need administrator approval" },
@@ -276,7 +282,7 @@ export function StartupView() {
           <ToggleGroupItem value="system" className="h-8 px-3 text-[12px]">System</ToggleGroupItem>
         </ToggleGroup>
         <div className="flex-1" />
-        {!IS_WINDOWS && <Button variant="ghost" size="sm" disabled={rescanning} onClick={async () => {
+        {!IS_WINDOWS && !IS_LINUX && <Button variant="ghost" size="sm" disabled={rescanning} onClick={async () => {
           setRescanning(true);
           try {
             const response = await fetch("/api/startup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "rescan" }) });
@@ -296,7 +302,7 @@ export function StartupView() {
           <TooltipContent>Reload</TooltipContent>
         </Tooltip>
         <Button variant="outline" size="sm" className="h-8 text-[12px]" onClick={() => void post({ action: "open-settings" })}>
-          <SettingsIcon className="size-3.5" /> {IS_WINDOWS ? "Startup Apps Settings" : "Login Items Settings"}
+          <SettingsIcon className="size-3.5" /> {byOS("Login Items Settings", "Startup Apps Settings", "Autostart Folder")}
         </Button>
       </header>
 
@@ -352,7 +358,7 @@ export function StartupView() {
             {visible.length === 0 && <p className="mt-10 text-center text-[13px] text-muted-foreground">No startup items match “{query}”.</p>}
             <p className="mt-6 text-[11.5px] leading-relaxed text-muted-foreground">
               Turning an item off stops it from starting automatically; it doesn't delete anything, and anything already running keeps
-              running until you quit it or restart. {IS_WINDOWS ? "Windows services and scheduled tasks aren't listed." : "Apple's own services aren't listed."}
+              running until you quit it or restart. {byOS("Apple's own services aren't listed.", "Windows services and scheduled tasks aren't listed.", "systemd's own units, timers and Hyprland exec-once lines aren't listed.")}
             </p>
           </>
         )}
@@ -365,7 +371,9 @@ export function StartupView() {
               {adminFor?.enabled ? "Enable" : "Disable"} {adminFor?.item.name}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {IS_WINDOWS
+              {IS_LINUX
+                ? `This is a system service, so you'll be asked for an administrator password. ${adminFor?.enabled ? "It will start the next time the PC boots." : "It won't start at boot anymore. Features that depend on it may stop working until you turn it back on."}`
+                : IS_WINDOWS
                 ? `This starts for every user on this PC, so Windows will ask for administrator approval. ${adminFor?.enabled ? "It will start the next time anyone signs in." : "It won't start at sign-in anymore."}`
                 : `This is a system daemon, so macOS will ask for an administrator password. ${adminFor?.enabled ? "It will start the next time the Mac restarts." : "It won't start with the Mac anymore. Features that depend on it may stop working until you turn it back on."}`}
             </AlertDialogDescription>
