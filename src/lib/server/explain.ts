@@ -8,6 +8,7 @@ import { loadBundle, outermostBundle } from "./bundle";
 import { isApplePath } from "./classify";
 import { output, run } from "./exec";
 import { lookupKnowledge, lookupPattern } from "./knowledge";
+import { explainLinux } from "./linux/explain";
 
 const LAUNCH_DIRS = [
   join(homedir(), "Library/LaunchAgents"),
@@ -116,6 +117,7 @@ function locationPhrase(path: string): string {
 }
 
 export async function explain(group: ProcessGroup, pid?: number): Promise<Explanation> {
+  if (process.platform === "linux") return explainLinux(group, pid);
   const target: ProcessRow = (pid ? group.processes.find((p) => p.pid === pid) : undefined) ??
     group.processes.find((p) => p.pid === group.headPid) ??
     group.processes[0];
