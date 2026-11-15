@@ -22,7 +22,7 @@ Systo reads everything from `/proc` and `/sys`, so it needs no helper and no roo
 - **Disk analyzer:** stays on the scanned filesystem, follows btrfs subvolumes of the same disk, and moves items to the freedesktop Trash.
 - **Network per app** counts TCP only; UDP traffic such as QUIC shows in the system total. GPU load is reported where the driver publishes it (amdgpu).
 
-Runtime packages: WebKitGTK 4.1, GTK 3 and `libayatana-appindicator` for the tray. `iproute2` (`ss`), `gio` and a polkit agent enable per-app network, Trash and administrator actions.
+Runtime packages: glibc 2.38 or newer (Ubuntu 24.04, Fedora 39, current Arch), WebKitGTK 4.1, GTK 3 and `libayatana-appindicator` for the tray. `iproute2` (`ss`), `gio` and a polkit agent enable per-app network, Trash and administrator actions.
 
 ## Development
 

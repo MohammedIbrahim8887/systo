@@ -24,7 +24,7 @@ export interface Download {
 const ASSETS: Record<DownloadPlatform, { pattern: RegExp; file: string; label: string; requirement: string; kind: string }> = {
   macos: { pattern: /Installer-arm64\.dmg$/, file: "Systo-Installer-arm64.dmg", label: "macOS", requirement: "Apple silicon · macOS 13 or later", kind: "DMG" },
   windows: { pattern: /Setup-x64\.exe$/, file: "Systo-Setup-x64.exe", label: "Windows", requirement: "64-bit · Windows 10 (1809) or 11", kind: "Installer" },
-  linux: { pattern: /Linux-x64\.tar\.gz$/, file: "Systo-Linux-x64.tar.gz", label: "Linux", requirement: "64-bit · WebKitGTK 4.1 · Dynamic Island on Hyprland", kind: "Installer archive" },
+  linux: { pattern: /Linux-x64\.tar\.gz$/, file: "Systo-Linux-x64.tar.gz", label: "Linux", requirement: "64-bit · glibc 2.38+ · WebKitGTK 4.1", kind: "Installer archive" },
 };
 
 /** Every platform has a row; Linux only once a release carries its installer. */

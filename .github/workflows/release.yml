@@ -75,7 +75,8 @@ jobs:
           path: release/
 
   linux:
-    runs-on: ubuntu-22.04
+    # Electrobun's build tools need glibc 2.38, which 22.04 doesn't have.
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
