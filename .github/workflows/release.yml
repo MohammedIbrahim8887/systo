@@ -1,8 +1,8 @@
 name: Release
 
-# Push a tag like v0.1.1 (matching package.json) to build both platforms and publish a GitHub
+# Push a tag like v0.1.1 (matching package.json) to build every platform and publish a GitHub
 # release. The in-app updater reads <platform>-update-v2.json and the archive beside it from
-# releases/latest/download, so every stable release must carry both platforms' update files.
+# releases/latest/download, so every stable release must carry all platforms' update files.
 
 on:
   push:
@@ -74,8 +74,35 @@ jobs:
           name: release-windows
           path: release/
 
+  linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build the desktop app
+        run: pnpm build
+      - name: Collect the installer and update files
+        run: |
+          mkdir -p release
+          # Electrobun's setup archive: a self-extracting installer that puts Systo under
+          # ~/.local/share and adds it to the app launcher.
+          cp .farm/output/desktop/dist/update/linux-x64-Systo-Setup.tar.gz release/Systo-Linux-x64.tar.gz
+          cp .farm/output/desktop/dist/update/stable-linux-x64-* release/
+          ls -la release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: release/
+
   publish:
-    needs: [macos, windows]
+    needs: [macos, windows, linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -95,7 +122,7 @@ jobs:
             echo
             echo "### Checksums (SHA-256)"
             echo '```'
-            (cd artifacts && sha256sum Systo-Installer-arm64.dmg Systo-Setup-x64.exe Systo-Windows-x64.zip)
+            (cd artifacts && sha256sum Systo-Installer-arm64.dmg Systo-Setup-x64.exe Systo-Windows-x64.zip Systo-Linux-x64.tar.gz)
             echo '```'
           } >> notes.md
           cat notes.md
