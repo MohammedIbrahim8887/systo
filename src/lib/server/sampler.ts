@@ -12,6 +12,10 @@ import type {
 import { getBundleSync, loadBundle, outermostBundle } from "./bundle";
 import { classifyProcess, bundleKind, safetyFor, sectionFor, worstSafety } from "./classify";
 import { output } from "./exec";
+import { canListWindows, entryForClass, entryForProgram, windowOwners, type DesktopEntry } from "./linux/apps";
+import { classifyLinux, safetyLinux } from "./linux/classify";
+import { readLinux, userName } from "./linux/native";
+import { socketTraffic } from "./linux/network";
 import { readNative, type NativeMemory, type NativeTable } from "./native";
 import { usage } from "./usage";
 import { exeDisplayName, exeInfo } from "./win/apps";
@@ -19,6 +23,7 @@ import { classifyWin, safetyWin } from "./win/classify";
 import { readWindows } from "./win/native";
 
 const IS_WIN = process.platform === "win32";
+const IS_LINUX = process.platform === "linux";
 
 interface PsRow {
   pid: number;
@@ -193,7 +198,7 @@ interface Counters {
   net: Map<number, { in: number; out: number }>;
   sysDisk: { read: number; write: number };
   sysNet: { in: number; out: number };
-  /** Windows: system-wide idle and busy CPU time (100ns units). */
+  /** Windows and Linux: system-wide idle and busy CPU time (100ns units or clock ticks). */
   sysCpu?: { idle: number; busy: number };
 }
 
@@ -299,11 +304,24 @@ export class Sampler {
     return Date.now() - this.lastFullDemand < DEMAND_MS;
   }
 
-  /** Per-app network rates from nettop when someone needs them, and at least every background tick for History. */
+  /**
+   * Per-app network rates when someone needs them, and at least every background tick for History.
+   * macOS reads running totals from nettop; Linux gets the bytes moved since the last reading.
+   */
   private async networkRates(): Promise<Map<number, { in: number; out: number }>> {
     const now = Date.now();
     const wanted = this.full() || now - this.lastNetworkDemand < DEMAND_MS || now - this.netAt >= BACKGROUND_MS - 500;
     if (!wanted) return this.netRates;
+    if (IS_LINUX) {
+      const moved = await socketTraffic().catch(() => null);
+      if (!moved) return this.netRates;
+      const elapsed = this.netAt ? Math.max(0.2, (now - this.netAt) / 1000) : 0;
+      const rates = new Map<number, { in: number; out: number }>();
+      if (elapsed) for (const [pid, bytes] of moved) rates.set(pid, { in: bytes.in / elapsed, out: bytes.out / elapsed });
+      this.netAt = now;
+      this.netRates = rates;
+      return rates;
+    }
     const counters = await readNettop().catch(() => null);
     if (!counters) return this.netRates;
     const seconds = this.netAt ? Math.max(0.2, (now - this.netAt) / 1000) : 0;
@@ -330,6 +348,7 @@ export class Sampler {
 
   private async sample() {
     if (IS_WIN) return this.sampleWindows();
+    if (IS_LINUX) return this.sampleLinux();
     const full = this.full();
     const [sample, netRates, sysNet, sysDisk, gpu] = await Promise.all([
       readNative(),
@@ -668,6 +687,190 @@ export class Sampler {
         memory: processes.reduce((s, p) => s + p.memory, 0),
         disk: processes.reduce((s, p) => s + p.diskRead + p.diskWrite, 0),
         network: 0,
+        self,
+      });
+    }
+    return groups;
+  }
+
+  // ── Linux ────────────────────────────────────────────────────────────────────────────────
+
+  private async sampleLinux() {
+    const [windows, netRates] = await Promise.all([windowOwners().catch(() => new Map<number, string>()), this.networkRates()]);
+    const linux = readLinux();
+    if (!linux) throw new Error("/proc is unavailable");
+    const at = Date.now();
+    const prev = this.prev;
+    const dt = prev ? Math.max(0.2, (at - prev.at) / 1000) : 0;
+    const counters: Counters = {
+      at,
+      cpu: new Map(),
+      diskRead: new Map(),
+      diskWrite: new Map(),
+      energy: new Map(),
+      net: new Map(),
+      sysDisk: linux.disk,
+      sysNet: linux.net,
+      sysCpu: linux.cpu,
+    };
+    this.native = true;
+    this.windowPids = new Set(windows.keys());
+
+    // Systo is this server, whatever it started (the shell and its web views) and the launcher above it.
+    const parents = new Map(linux.procs.map((p) => [p.pid, p.ppid]));
+    const selfPids = new Set<number>([process.pid]);
+    const execDir = dirname(process.execPath);
+    for (const p of linux.procs) {
+      let cursor = p.pid;
+      for (let depth = 0; depth < 12 && cursor > 1; depth++) {
+        if (selfPids.has(cursor)) {
+          selfPids.add(p.pid);
+          break;
+        }
+        cursor = parents.get(cursor) ?? 0;
+      }
+      if (p.pid === process.ppid && p.path && dirname(p.path) === execDir) selfPids.add(p.pid);
+    }
+
+    const entries = new Map<number, DesktopEntry | undefined>();
+    const rows: ProcessRow[] = [];
+    for (const p of linux.procs) {
+      counters.cpu.set(p.pid, p.cpuNs);
+      counters.diskRead.set(p.pid, p.ioRead);
+      counters.diskWrite.set(p.pid, p.ioWrite);
+      // The path of another user's process is a guess from its command line ("/sbin/init" for
+      // systemd), so the kernel's name wins unless it was cut off at 15 characters.
+      const file = p.path ? basename(p.path) : "";
+      const name = file && (p.readable || file.startsWith(p.comm)) ? file : p.comm;
+      const windowClass = windows.get(p.pid);
+      const hasWindow = windowClass !== undefined;
+      const entry = p.kthread ? undefined : hasWindow ? entryForClass(windowClass) ?? entryForProgram(p.path, name) : entryForProgram(p.path, name);
+      entries.set(p.pid, entry);
+      const kind = classifyLinux({
+        pid: p.pid,
+        uid: p.uid,
+        name,
+        path: p.path,
+        kthread: p.kthread,
+        // Without a compositor to ask, a launcher entry is the best sign that this is an app.
+        hasWindow: hasWindow || (!canListWindows() && Boolean(entry) && p.uid >= 1000),
+        hasEntry: Boolean(entry),
+      });
+      rows.push({
+        pid: p.pid,
+        ppid: p.ppid,
+        uid: p.uid,
+        user: userName(p.uid),
+        name,
+        path: p.path,
+        cpu: Math.min(prev && dt ? (delta(p.cpuNs, prev.cpu.get(p.pid)) / (dt * 1e9)) * 100 : 0, this.cores * 100),
+        memory: p.memory,
+        diskRead: prev && dt ? delta(p.ioRead, prev.diskRead.get(p.pid)) / dt : 0,
+        diskWrite: prev && dt ? delta(p.ioWrite, prev.diskWrite.get(p.pid)) / dt : 0,
+        netIn: netRates.get(p.pid)?.in ?? 0,
+        netOut: netRates.get(p.pid)?.out ?? 0,
+        power: 0,
+        kind,
+        safety: safetyLinux(name, kind, p.pid),
+        inspectable: p.readable || p.kthread,
+        self: selfPids.has(p.pid),
+      });
+    }
+
+    const groups = this.groupLinux(rows, windows, entries);
+    let totalCpu = rows.reduce((sum, r) => sum + r.cpu, 0) / this.cores;
+    if (prev?.sysCpu) {
+      const busy = delta(linux.cpu.busy, prev.sysCpu.busy);
+      const idle = delta(linux.cpu.idle, prev.sysCpu.idle);
+      if (busy + idle > 0) totalCpu = (busy / (busy + idle)) * 100;
+    }
+    const m = linux.memory;
+    const free = m.total ? m.available / m.total : 1;
+    const memory: MemoryStats = {
+      used: Math.max(0, m.total - m.available),
+      app: m.anon + m.shmem,
+      wired: m.kernel,
+      compressed: m.compressed,
+      cached: m.cached,
+      swapUsed: m.swapUsed,
+      pressure:
+        (m.pressureFull ?? 0) >= 10 || free < 0.04 ? "critical" : (m.pressureSome ?? 0) >= 10 || free < 0.1 ? "warning" : "normal",
+    };
+    this.publish({ at, prev, dt, counters, groups, rows, totalCpu, memory, gpu: linux.gpu });
+  }
+
+  /**
+   * An app is a process that owns a window; whatever it started joins it (a terminal's shells, a
+   * browser's renderers), the way Activity Monitor groups by responsible app. Everything else
+   * groups by executable, and kernel threads collapse into one entry.
+   */
+  private groupLinux(rows: ProcessRow[], windows: Map<number, string>, entries: Map<number, DesktopEntry | undefined>): ProcessGroup[] {
+    const byPid = new Map(rows.map((r) => [r.pid, r]));
+    const isApp = (r: ProcessRow) => r.kind === "app" && !r.self;
+    const baseKey = (r: ProcessRow) => {
+      if (r.self) return "app:systo";
+      if (r.kind === "kernel") return "kernel";
+      if (isApp(r)) {
+        const entry = entries.get(r.pid);
+        return `app:${entry?.id ?? windows.get(r.pid) ?? r.path ?? r.name}`;
+      }
+      return `exe:${r.uid < 1000 ? "sys" : "usr"}:${r.path || r.name}`;
+    };
+    const keys = new Map<number, string>();
+    for (const r of rows) keys.set(r.pid, baseKey(r));
+    for (const r of rows) {
+      if (r.self || r.kind === "kernel" || isApp(r)) continue;
+      let parent = byPid.get(r.ppid);
+      for (let depth = 0; parent && parent.pid > 1 && depth < 12; depth++) {
+        if (parent.self) break;
+        if (isApp(parent)) {
+          keys.set(r.pid, keys.get(parent.pid)!);
+          // Tools run inside a terminal keep their own kind; an app's own children are its helpers.
+          if (r.kind !== "developer") r.kind = "helper";
+          break;
+        }
+        parent = byPid.get(parent.ppid);
+      }
+    }
+
+    const buckets = new Map<string, ProcessRow[]>();
+    for (const r of rows) {
+      const key = keys.get(r.pid)!;
+      let list = buckets.get(key);
+      if (!list) buckets.set(key, (list = []));
+      list.push(r);
+    }
+
+    const groups: ProcessGroup[] = [];
+    for (const [id, processes] of buckets) {
+      processes.sort((a, b) => a.pid - b.pid);
+      const self = id === "app:systo";
+      const kernel = id === "kernel";
+      const pids = new Set(processes.map((p) => p.pid));
+      const head =
+        (self ? processes.find((p) => p.pid === process.pid) : undefined) ??
+        processes.find((p) => windows.has(p.pid) && isApp(p)) ??
+        processes.find((p) => !pids.has(p.ppid)) ??
+        processes[0];
+      const entry = self || kernel ? undefined : entries.get(head.pid);
+      const kind = self ? "app" : head.kind;
+      const appLike = kind === "app" || kind === "menu-bar";
+      groups.push({
+        id,
+        name: self ? "Systo" : kernel ? "Linux kernel" : entry && appLike ? entry.name : head.name,
+        section: sectionFor(kind),
+        kind,
+        safety: appLike ? (processes.some((p) => p.safety === "critical") ? "critical" : head.safety) : worstSafety(processes.map((p) => p.safety)),
+        bundleId: entry && appLike ? entry.id : undefined,
+        bundlePath: entry && appLike ? entry.file : undefined,
+        hasIcon: Boolean(entry && appLike && entry.icon),
+        user: head.user,
+        headPid: head.pid,
+        processes,
+        cpu: processes.reduce((s, p) => s + p.cpu, 0),
+        memory: processes.reduce((s, p) => s + p.memory, 0),
+        disk: processes.reduce((s, p) => s + p.diskRead + p.diskWrite, 0),
+        network: processes.reduce((s, p) => s + p.netIn + p.netOut, 0),
         self,
       });
     }

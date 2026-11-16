@@ -27,6 +27,8 @@ export interface DiskScanRequest {
   /** "list" reads one directory; "tree" scans everything beneath it. */
   mode: "list" | "tree";
   dev: number;
+  /** Linux: every device id that counts as the scanned filesystem (btrfs subvolumes each have their own). */
+  devs?: number[];
   minKeep: number;
   maxChildren: number;
 }
@@ -112,6 +114,7 @@ export function createDiskScanner(
     let topFiles: Array<{ p: string; s: number }> = [];
     let topMin = 1024 * 1024;
     const seenLinks = new Set<number>();
+    const sameVolume = request.devs?.length ? new Set(request.devs) : null;
     let files = 0;
     let dirs = 0;
     let bytes = 0;
@@ -160,7 +163,12 @@ export function createDiskScanner(
       return true;
     };
 
-    /** Windows: readdir plus one lstat per file. Junctions and symlinks aren't followed. */
+    /**
+     * Windows and Linux: readdir plus one lstat per file. Junctions and symlinks aren't followed.
+     * Linux also stats folders, to stay on the scanned filesystem (out of /proc, /sys and other
+     * mounts), and counts allocated blocks so sparse files don't read as huge.
+     */
+    const linux = process.platform === "linux";
     const readDirFs = (path: string, onDir: OnDir, onFile: OnFile): boolean => {
       let entries: Array<{ name: string; isDirectory(): boolean; isFile(): boolean; isSymbolicLink(): boolean }>;
       try {
@@ -171,13 +179,20 @@ export function createDiskScanner(
       for (const entry of entries) {
         if (entry.isSymbolicLink()) continue;
         if (entry.isDirectory()) {
-          onDir(entry.name, request.dev);
+          if (!linux) onDir(entry.name, request.dev);
+          else {
+            try {
+              onDir(entry.name, fs.lstatSync(`${trimSlash(path)}/${entry.name}`).dev);
+            } catch {
+              denied++;
+            }
+          }
           continue;
         }
         if (!entry.isFile()) continue;
         try {
           const stat = fs.lstatSync(`${trimSlash(path)}/${entry.name}`);
-          onFile(entry.name, stat.size, stat.nlink, stat.ino);
+          onFile(entry.name, linux ? stat.blocks * 512 : stat.size, stat.nlink, stat.ino);
         } catch {
           denied++;
         }
@@ -209,7 +224,7 @@ export function createDiskScanner(
       const subdirs: Array<{ name: string; kind: 1 | 2 }> = [];
       const children: DiskNode[] = [];
       const onDir = (entryName: string, dev: number) => {
-        if (dev === request.dev) subdirs.push({ name: entryName, kind: PACKAGE_EXT.test(entryName) ? 2 : 1 });
+        if (sameVolume ? sameVolume.has(dev) : dev === request.dev) subdirs.push({ name: entryName, kind: PACKAGE_EXT.test(entryName) ? 2 : 1 });
       };
       const onFile = (entryName: string, alloc: number, links: number, fileId: number) => {
         if (links > 1 && fileId) {

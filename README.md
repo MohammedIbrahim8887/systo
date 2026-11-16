@@ -1,6 +1,6 @@
 # Systo
 
-A clearer view of your Mac. Systo is a macOS system monitor inspired by the simplicity of Windows Task Manager, with a monochrome interface and a Dynamic Island overlay.
+A clearer view of your computer. Systo is a system monitor for macOS, Windows and Linux inspired by the simplicity of Windows Task Manager, with a monochrome interface and a Dynamic Island overlay.
 
 ## Features
 
@@ -12,11 +12,23 @@ A clearer view of your Mac. Systo is a macOS system monitor inspired by the simp
 - **Disk analyzer:** explore folders with sunburst and treemap views, find large files and cleanup candidates, reveal items in Finder, or move selected items to Trash with confirmation.
 - **Installer:** an offline macOS installer with the Core logo and a drag-or-click installation flow.
 
+## Linux
+
+Systo reads everything from `/proc` and `/sys`, so it needs no helper and no root. It is built and tested on Omarchy (Arch, Hyprland) and written against freedesktop standards rather than one distribution.
+
+- **Processes:** apps are the processes that own a window, named and given icons from their `.desktop` entries. What an app starts is grouped under it, and kernel threads collapse into one entry. Window ownership comes from Hyprland; on other desktops apps are recognized by their launcher entry.
+- **Startup:** XDG autostart entries, systemd user services and systemd system services. Turning an autostart entry off writes the standard `Hidden=true` override in `~/.config/autostart`; system services ask for an administrator password through polkit.
+- **Dynamic Island:** a floating pill under the bar, on Hyprland. Other compositors get the main window and the tray.
+- **Disk analyzer:** stays on the scanned filesystem, follows btrfs subvolumes of the same disk, and moves items to the freedesktop Trash.
+- **Network per app** counts TCP only; UDP traffic such as QUIC shows in the system total. GPU load is reported where the driver publishes it (amdgpu).
+
+Runtime packages: glibc 2.38 or newer (Ubuntu 24.04, Fedora 39, current Arch), WebKitGTK 4.1, GTK 3 and `libayatana-appindicator` for the tray. `iproute2` (`ss`), `gio` and a polkit agent enable per-app network, Trash and administrator actions. Choosing a folder in the Disk analyzer needs one of `zenity`, `kdialog` or Python's GTK bindings (`python-gobject` / `python3-gi`).
+
 ## Development
 
-Systo uses Farm.js, React, TypeScript, shadcn/ui, and Electrobun. Native integrations use macOS APIs and system tools.
+Systo uses Farm.js, React, TypeScript, shadcn/ui, and Electrobun. Native integrations use each platform's own APIs and system tools: libproc and AppKit on macOS, Win32 on Windows, `/proc`, systemd and the Hyprland socket on Linux.
 
-Requirements: macOS, Xcode Command Line Tools, Node.js 22.13 or newer, Bun, and pnpm. The installer builds for the host architecture.
+Requirements: Node.js 22.13 or newer, Bun, and pnpm, on macOS (with Xcode Command Line Tools), Windows or Linux. The installer builds for the host architecture.
 
 ```sh
 pnpm install
@@ -38,12 +50,15 @@ pnpm build:installer
 
 The installer is written to `dist/Systo Installer.app` and the disk image to `dist/Systo-Installer-arm64.dmg` (`x64` on an Intel host). See [installer documentation](installer/README.md) for installation behavior and native tests.
 
+On Linux, `pnpm build` writes `.farm/output/desktop/dist/update/linux-x64-Systo-Setup.tar.gz`. Extract it and run `./installer`: Systo is installed under `~/.local/share/dev.systo.monitor` and added to the app launcher.
+
 Builds currently use ad-hoc signing for local use. Developer ID signing and Apple notarization are not configured.
 
 ## Checks
 
 ```sh
-bun test tests/startup.test.ts
+bun test tests
+bun scripts/linux-smoke.ts   # on Linux: the data layer against the real machine
 xcrun swiftc installer/InstallService.swift installer/InstallServiceTests.swift -o /tmp/systo-install-tests
 /tmp/systo-install-tests
 ```

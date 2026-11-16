@@ -7,8 +7,10 @@ import { getBundleSync, loadBundle, outermostBundle } from "./bundle";
 import { output, run } from "./exec";
 import { sampler } from "./sampler";
 import { openStartupSettingsWindows, setStartupItemWindows, startupReportWindows } from "./win/startup";
+import { openStartupSettingsLinux, setStartupItemLinux, startupReportLinux } from "./linux/startup";
 
 const IS_WIN = process.platform === "win32";
+const IS_LINUX = process.platform === "linux";
 
 /**
  * Startup items come from three places that System Settings > Login Items merges:
@@ -282,6 +284,7 @@ async function bundleMeta(path?: string) {
 
 export async function startupReport(force = false): Promise<StartupReport> {
   if (IS_WIN) return startupReportWindows(force);
+  if (IS_LINUX) return startupReportLinux(force);
   const [records, loginItems, guiOverrides, systemOverrides, guiPids, systemPids, snapshot] = await Promise.all([
     btm(force),
     readLoginItems(),
@@ -468,6 +471,7 @@ async function admin(command: string): Promise<{ ok: boolean; cancelled: boolean
 
 export async function setStartupItem(id: string, enabled: boolean, useAdmin: boolean): Promise<StartupToggleResult> {
   if (IS_WIN) return setStartupItemWindows(id, enabled, useAdmin);
+  if (IS_LINUX) return setStartupItemLinux(id, enabled, useAdmin);
   if (id.startsWith("login:")) return setLoginItem(id.slice(6), enabled);
   const m = /^launchd:(gui|system):(.+)$/.exec(id);
   if (!m || !LABEL.test(m[2])) return { ok: false, needsAdmin: false, message: "Unknown startup item." };
@@ -517,11 +521,12 @@ end run`;
 
 /** Warm the saved inventory without invoking permission-sensitive discovery. */
 export function warmStartup() {
-  if (IS_WIN) return;
+  if (IS_WIN || IS_LINUX) return;
   void btm();
 }
 
 export async function openLoginItemsSettings() {
   if (IS_WIN) return openStartupSettingsWindows();
+  if (IS_LINUX) return openStartupSettingsLinux();
   await run("/usr/bin/open", ["x-apple.systempreferences:com.apple.LoginItems-Settings.extension"]);
 }

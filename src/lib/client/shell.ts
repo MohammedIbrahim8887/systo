@@ -8,6 +8,8 @@ import type { UpdateState } from "../update-types";
 export interface ShellState {
   desktop: boolean;
   island: boolean;
+  /** False where the shell has no island to draw (Linux). */
+  islandSupported: boolean;
   notch: boolean;
   /** Pushed by the shell whenever the updater changes state (see shell/updater.ts). */
   update?: UpdateState;

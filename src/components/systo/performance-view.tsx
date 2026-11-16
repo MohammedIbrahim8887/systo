@@ -1,6 +1,6 @@
 "use client";
 
-import { OS, IS_WINDOWS } from "@/lib/platform";
+import { OS, byOS } from "@/lib/platform";
 import { useMemo, useState } from "react";
 import { usePoll } from "@/lib/client/use-poll";
 import { useSettings } from "@/lib/client/settings";
@@ -191,7 +191,7 @@ export function PerformanceView({ snapshot }: { snapshot: Snapshot | null }) {
                 <>
                   <Stat label="In use" value={formatBytes(t.memoryUsed)} hint={`${Math.round((t.memoryUsed / t.memoryTotal) * 100)}% of ${formatBytes(t.memoryTotal, 0)}`} />
                   <Stat label="App memory" value={formatBytes(t.memoryApp)} />
-                  <Stat label={IS_WINDOWS ? "Kernel" : "Wired"} value={formatBytes(t.memoryWired)} hint={`Kept in RAM by ${OS.name}`} />
+                  <Stat label={byOS("Wired", "Kernel", "Kernel")} value={formatBytes(t.memoryWired)} hint={`Kept in RAM by ${OS.name}`} />
                   <Stat label="Compressed" value={formatBytes(t.memoryCompressed)} />
                   <Stat label="Cached files" value={formatBytes(t.memoryCached)} hint="Freed when apps need it" />
                   <Stat label="Swap used" value={formatBytes(t.swapUsed)} />

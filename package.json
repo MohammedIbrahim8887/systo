@@ -41,7 +41,7 @@
   },
   "packageManager": "pnpm@11.9.0",
   "productName": "Systo",
-  "description": "A simple, monochrome process manager for macOS and Windows with a Dynamic Island.",
+  "description": "A simple, monochrome process manager for macOS, Windows and Linux with a Dynamic Island.",
   "electrobun": {
     "release": {
       "baseUrl": "https://github.com/MohammedIbrahim8887/systo/releases/latest/download",

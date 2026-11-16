@@ -1,6 +1,6 @@
 import { appDataFile } from "./paths";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { cpus, homedir } from "node:os";
 import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
@@ -18,9 +18,45 @@ import { storageUsage } from "./system";
  */
 
 const IS_WIN = process.platform === "win32";
+const IS_LINUX = process.platform === "linux";
 /** Paths use forward slashes everywhere, which Windows accepts too (C:/Users/…). */
 const toSlash = (p: string) => p.replace(/\\/g, "/");
-const DATA_VOLUME = IS_WIN ? `${(process.env.SystemDrive || "C:").replace(/[\\/]$/, "")}/` : "/System/Volumes/Data";
+const DATA_VOLUME = IS_WIN ? `${(process.env.SystemDrive || "C:").replace(/[\\/]$/, "")}/` : IS_LINUX ? "/" : "/System/Volumes/Data";
+
+/**
+ * Linux: device ids of every mount of the filesystem that holds `root`, at or below it. A btrfs
+ * install mounts / and /home as subvolumes of one filesystem, each with its own device id, so
+ * following only the root's id would skip /home.
+ */
+function sameFilesystemDevs(root: string, dev: number): number[] {
+  const devs = new Set([dev]);
+  try {
+    const mounts = readFileSync("/proc/self/mountinfo", "utf8")
+      .split("\n")
+      .map((line) => {
+        const [before, after] = line.split(" - ");
+        const point = (before?.split(" ")[4] ?? "").replace(/\\(\d{3})/g, (_, octal: string) => String.fromCharCode(Number.parseInt(octal, 8)));
+        const [type, source] = after?.split(" ") ?? [];
+        return { point, type, source };
+      })
+      .filter((m) => m.point && m.source);
+    const within = (path: string, parent: string) => path === parent || path.startsWith(parent === "/" ? "/" : `${parent}/`);
+    const home = mounts.filter((m) => within(root, m.point)).sort((a, b) => b.point.length - a.point.length)[0];
+    if (home) {
+      for (const m of mounts) {
+        if (m.source !== home.source || m.type !== home.type || !within(m.point, root)) continue;
+        try {
+          devs.add(statSync(m.point).dev);
+        } catch {
+          // not readable; skipped
+        }
+      }
+    }
+  } catch {
+    // no mountinfo: stay on the root's own device
+  }
+  return [...devs];
+}
 const HOME = IS_WIN ? toSlash(homedir()) : homedir();
 
 const trimSlash = (p: string) => (p.endsWith("/") ? p.slice(0, -1) : p);
@@ -86,7 +122,7 @@ function displayPath(path: string) {
 
 function labelFor(root: string) {
   if (IS_WIN && /^[A-Za-z]:\/$/.test(root)) return `Local Disk (${root.slice(0, 2)})`;
-  if (root === DATA_VOLUME || root === "/") return "Macintosh HD";
+  if (root === DATA_VOLUME || root === "/") return IS_LINUX ? "File System" : "Macintosh HD";
   if (root === HOME) return "Home";
   return basename(root) || root;
 }
@@ -173,6 +209,8 @@ class DiskAnalyzer {
     }
   }
 
+  private devs: number[] | undefined;
+
   start(requested: string): DiskScanState {
     this.load();
     if (this.state.status === "scanning") return this.state;
@@ -192,6 +230,7 @@ class DiskAnalyzer {
       return this.state;
     }
     this.cancelled = false;
+    this.devs = IS_LINUX ? sameFilesystemDevs(root, dev) : undefined;
     const startedAt = Date.now();
     this.state = { status: "scanning", root, label: labelFor(root), startedAt, progress: { files: 0, dirs: 0, bytes: 0, current: displayPath(root) } };
     void this.scan(bun, root, dev, startedAt).catch((error) => {
@@ -284,7 +323,7 @@ class DiskAnalyzer {
           w.task = task;
           w.progress = { files: 0, dirs: 0, bytes: 0 };
           inflight++;
-          const request: DiskScanRequest = { id: task.id, path: task.path, mode: task.mode, dev, minKeep: MIN_KEEP, maxChildren: MAX_CHILDREN };
+          const request: DiskScanRequest = { id: task.id, path: task.path, mode: task.mode, dev, devs: this.devs, minKeep: MIN_KEEP, maxChildren: MAX_CHILDREN };
           w.child.stdin.write(JSON.stringify(request) + "\n");
         }
         if (inflight === 0 && queue.length === 0) finish();
@@ -436,9 +475,23 @@ class DiskAnalyzer {
       { id: "downloads", title: "Downloads", description: "Installers and files you downloaded. Often full of things you no longer need.", path: join(HOME, "Downloads"), safe: false },
       { id: "npm", title: "Package manager caches", description: "npm, pnpm, Yarn and Bun download caches. They refill on the next install.", path: join(HOME, ".npm"), safe: true },
     ];
-    const known = IS_WIN ? windowsKnown : macKnown;
+    const DATA = process.env.XDG_DATA_HOME || join(HOME, ".local", "share");
+    const linuxKnown: Array<Omit<DiskSuggestion, "size"> & { path: string }> = [
+      { id: "trash", title: "Trash", description: "Files you've already deleted. Empty the Trash in your file manager to get the space back.", path: join(DATA, "Trash"), safe: true },
+      { id: "caches", title: "App caches", description: "Apps rebuild these as needed. Safe to clear, though apps may start a little slower once.", path: join(HOME, ".cache"), safe: true },
+      { id: "pacman", title: "Package cache", description: "Downloaded packages kept for downgrades. Trim it with `sudo paccache -r`, which keeps the last three versions.", path: "/var/cache/pacman/pkg", safe: true },
+      { id: "journal", title: "System logs", description: "The systemd journal. Shrink it with `sudo journalctl --vacuum-size=200M` rather than deleting files.", path: "/var/log/journal", safe: false },
+      { id: "docker", title: "Docker data", description: "Containers, images and volumes. Reclaim space with `docker system prune` rather than deleting the folder.", path: "/var/lib/docker", safe: false },
+      { id: "flatpak", title: "Flatpak app data", description: "Settings and data of Flatpak apps, including ones you've since removed. Clean up with `flatpak uninstall --unused --delete-data`.", path: join(HOME, ".var", "app"), safe: false },
+      { id: "downloads", title: "Downloads", description: "Installers and files you downloaded. Often full of things you no longer need.", path: join(HOME, "Downloads"), safe: false },
+      { id: "npm", title: "Package manager caches", description: "npm, pnpm, Yarn and Bun download caches. They refill on the next install.", path: join(HOME, ".npm"), safe: true },
+    ];
+    const known = IS_WIN ? windowsKnown : IS_LINUX ? linuxKnown : macKnown;
     const extraCaches = IS_WIN
       ? [`${LOCAL}/pnpm/store`, `${LOCAL}/Yarn/Cache`, `${HOME}/.bun/install/cache`, `${HOME}/.cache`]
+      : IS_LINUX
+      ? // ~/.cache is already "App caches" here.
+        [join(DATA, "pnpm", "store"), join(HOME, ".pnpm-store"), join(HOME, ".bun", "install", "cache")]
       : [join(HOME, "Library", "pnpm"), join(HOME, ".pnpm-store"), join(HOME, ".bun", "install", "cache"), join(HOME, ".cache")];
     const results: DiskSuggestion[] = known.map((k) => ({ ...k, size: size(k.path) }));
     const npm = results.find((r) => r.id === "npm")!;
@@ -519,6 +572,7 @@ class DiskAnalyzer {
     if (!located || located.trail.length < 2) return { ok: false, message: "That item isn't part of the scan." };
     const real = path;
     if (IS_WIN) return this.recycle(real, located.trail);
+    if (IS_LINUX) return this.trashLinux(real, located.trail);
     const protectedPaths = new Set(
       [HOME, join(HOME, "Library"), join(HOME, "Documents"), join(HOME, "Desktop"), join(HOME, "Downloads"), join(HOME, "Applications"), "/Applications", "/Library", "/System", "/Users", "/usr", "/bin", "/sbin", "/private", "/opt", "/Volumes", "/cores"].flatMap(
         (p) => [p, DATA_VOLUME + p],
@@ -546,6 +600,54 @@ end run`;
     }
     this.forget(located.trail);
     return { ok: true, message: `Moved ${basename(real)} to the Trash.` };
+  }
+
+  /**
+   * Moves it to the freedesktop Trash, where the file manager can restore it. gio picks the right
+   * trash for the item's drive but refuses items on another btrfs subvolume of the home disk
+   * (~/.cache often is one), so those go to the home trash by hand.
+   */
+  private async trashLinux(real: string, trail: DiskNode[]): Promise<{ ok: boolean; message: string }> {
+    const protectedPaths = new Set([
+      HOME, join(HOME, "Documents"), join(HOME, "Desktop"), join(HOME, "Downloads"), join(HOME, ".config"), join(HOME, ".local"), join(HOME, ".local", "share"),
+      "/", "/usr", "/etc", "/var", "/home", "/opt", "/boot", "/bin", "/sbin", "/lib", "/lib64", "/root", "/srv", "/mnt", "/run", "/tmp",
+    ]);
+    if (protectedPaths.has(trimSlash(real) || "/")) return { ok: false, message: "Systo won't move a top-level system or home folder to the Trash." };
+    if (!existsSync(real)) {
+      this.forget(trail);
+      return { ok: true, message: "It was already gone." };
+    }
+    const gio = await run("gio", ["trash", "--", real], 120000);
+    if (gio.code !== 0) {
+      const failure = await this.trashToHome(real);
+      if (failure) return { ok: false, message: `Couldn't move it to the Trash: ${failure}` };
+    }
+    this.forget(trail);
+    return { ok: true, message: `Moved ${basename(real)} to the Trash.` };
+  }
+
+  /** The freedesktop Trash layout: the item under files/, and where it came from under info/. Returns an error, or null. */
+  private async trashToHome(real: string): Promise<string | null> {
+    const trash = join(process.env.XDG_DATA_HOME || join(HOME, ".local", "share"), "Trash");
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const now = new Date();
+    const deleted = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    try {
+      mkdirSync(join(trash, "files"), { recursive: true });
+      mkdirSync(join(trash, "info"), { recursive: true });
+      let name = basename(real);
+      for (let i = 2; existsSync(join(trash, "files", name)) || existsSync(join(trash, "info", `${name}.trashinfo`)); i++) name = `${basename(real)}.${i}`;
+      const info = join(trash, "info", `${name}.trashinfo`);
+      // The record goes first, as the spec asks, so a half-moved item is never orphaned.
+      writeFileSync(info, `[Trash Info]\nPath=${real.split("/").map(encodeURIComponent).join("/")}\nDeletionDate=${deleted}\n`, { flag: "wx" });
+      // mv copies and deletes when the trash is on another filesystem, which rename can't do.
+      const { code, stderr } = await run("mv", ["--", real, join(trash, "files", name)], 10 * 60_000);
+      if (code === 0) return null;
+      rmSync(info, { force: true });
+      return stderr.trim().split("\n")[0] || "the move failed.";
+    } catch (error) {
+      return (error as Error).message;
+    }
   }
 
   private async recycle(real: string, trail: DiskNode[]): Promise<{ ok: boolean; message: string }> {
@@ -593,6 +695,7 @@ try {
     }
   }
 
+  /** The folder the user picked, or null when they cancelled. Throws when no dialog can be shown. */
   async choose(): Promise<string | null> {
     if (IS_WIN) {
       const { stdout } = await powershell(
@@ -606,6 +709,29 @@ $owner.Dispose()`,
         10 * 60_000,
       );
       return stdout.trim() ? toSlash(stdout.trim()) : null;
+    }
+    if (IS_LINUX) {
+      const title = "Choose a folder for Systo to analyze";
+      const gtk = `import gi
+gi.require_version("Gtk", "3.0")
+from gi.repository import GLib, Gtk
+GLib.set_prgname("Systo")
+d = Gtk.FileChooserNative.new(${JSON.stringify(title)}, None, Gtk.FileChooserAction.SELECT_FOLDER, None, None)
+if d.run() == Gtk.ResponseType.ACCEPT:
+    print(d.get_filename(), end="")`;
+      // Whichever dialog the desktop has. Running Systo's window takes GTK but not Python's
+      // bindings for it, so each one is checked for what it actually needs.
+      const dialogs: Array<{ probe: string; tool: string; args: string[] }> = [
+        { probe: "command -v zenity", tool: "zenity", args: ["--file-selection", "--directory", `--title=${title}`] },
+        { probe: "command -v kdialog", tool: "kdialog", args: ["--getexistingdirectory", HOME, "--title", title] },
+        { probe: `python3 -c 'import gi; gi.require_version("Gtk", "3.0"); from gi.repository import Gtk'`, tool: "python3", args: ["-c", gtk] },
+      ];
+      for (const { probe, tool, args } of dialogs) {
+        if ((await run("/bin/sh", ["-c", probe], 5000)).code !== 0) continue;
+        const { code, stdout } = await run(tool, args, 10 * 60_000);
+        return code === 0 && stdout.trim().startsWith("/") ? stdout.trim() : null;
+      }
+      throw new Error("No folder dialog is installed. Install zenity, kdialog or python-gobject to choose a folder.");
     }
     const { code, stdout } = await run(
       "/usr/bin/osascript",

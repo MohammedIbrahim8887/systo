@@ -3,6 +3,16 @@
 All notable changes to Systo. The release workflow publishes each version's section as its
 GitHub release notes, and the website's changelog page renders this file.
 
+## [Unreleased] - Unreleased
+
+### Added
+- **Linux.** Systo runs on Linux, built and tested on Omarchy: grouped processes with app names and icons, performance charts, history, the disk analyzer, and startup toggles for autostart entries and systemd services.
+- **Dynamic Island on Hyprland.** A floating pill under the bar that opens on hover and hides while something is fullscreen.
+- A Linux installer in every release, with in-app updates.
+
+### Fixed
+- **Restart to update** no longer closes Systo without installing anything. The app's server asked for time to shut down when the updater requested the restart, which the updater took as a refusal; Systo now stops the server first.
+
 ## [0.1.2] - 2026-11-16
 
 ### Fixed

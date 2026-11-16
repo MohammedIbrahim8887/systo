@@ -1,6 +1,7 @@
 import { cpus, hostname, totalmem } from "node:os";
 import type { SystemInfo } from "../types";
 import { output } from "./exec";
+import { storageLinux, systemInfoLinux } from "./linux/system";
 import { storageWindows, systemInfoWindows } from "./win/system";
 
 let cached: { at: number; info: SystemInfo } | null = null;
@@ -13,6 +14,11 @@ export async function systemInfo(): Promise<SystemInfo> {
   if (cached && Date.now() - cached.at < 60_000) return cached.info;
   if (process.platform === "win32") {
     const info = await systemInfoWindows();
+    cached = { at: Date.now(), info };
+    return info;
+  }
+  if (process.platform === "linux") {
+    const info = systemInfoLinux();
     cached = { at: Date.now(), info };
     return info;
   }
@@ -65,6 +71,11 @@ export async function storageUsage(): Promise<{ used: number; total: number }> {
     const value = await storageWindows();
     storageCache = { at: Date.now(), value };
     return value;
+  }
+  if (process.platform === "linux") {
+    const { used, total } = storageLinux();
+    storageCache = { at: Date.now(), value: { used, total } };
+    return storageCache.value;
   }
   const df = await output("/bin/df", ["-k", "/System/Volumes/Data"]);
   const cells = df.trim().split("\n")[1]?.split(/\s+/) ?? [];

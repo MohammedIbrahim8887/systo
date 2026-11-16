@@ -1,0 +1,51 @@
+name: Linux build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    # Electrobun's build tools need glibc 2.38, which 22.04 doesn't have.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        run: pnpm type-check
+
+      - name: Unit tests
+        run: bun test tests
+
+      - name: Smoke test the Linux data layer
+        run: bun scripts/linux-smoke.ts
+
+      - name: Build the desktop app
+        run: pnpm build
+
+      - name: Collect the installer
+        run: |
+          find .farm/output/desktop/dist -maxdepth 2 -type f -printf '%p %s\n'
+          mkdir -p release
+          cp .farm/output/desktop/dist/update/linux-x64-Systo-Setup.tar.gz release/Systo-Linux-x64.tar.gz
+          sha256sum release/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Systo-Linux-x64
+          path: release/

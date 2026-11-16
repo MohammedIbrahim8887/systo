@@ -1,5 +1,5 @@
 import "./styles.css";
-import { ArrowDownToLineIcon, ArrowUpRightIcon, LaptopIcon, MonitorIcon } from "lucide-react";
+import { ArrowDownToLineIcon, ArrowUpRightIcon, LaptopIcon, MonitorIcon, SquareTerminalIcon } from "lucide-react";
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { cn } from "@/lib/utils";
@@ -38,7 +38,7 @@ function PlatformSwitch({ value, onChange }: { value: Platform; onChange: (p: Pl
 function Downloads() {
   const downloads = useDownloads();
   const latest = RELEASES.find((r) => !r.unreleased) ?? RELEASES[0];
-  const rows = [downloads.macos, downloads.windows];
+  const rows = [downloads.macos, downloads.windows, ...(downloads.linux ? [downloads.linux] : [])];
   return (
     <section id="download" className="border-t bg-sidebar">
       <div className="mx-auto max-w-[1120px] px-5 py-28 md:py-32">
@@ -63,7 +63,7 @@ function Downloads() {
                 <tr key={d.platform}>
                   <td className="px-5 py-5">
                     <div className="flex items-center gap-3">
-                      {d.platform === "macos" ? <LaptopIcon className="size-5" /> : <MonitorIcon className="size-5" />}
+                      {d.platform === "macos" ? <LaptopIcon className="size-5" /> : d.platform === "linux" ? <SquareTerminalIcon className="size-5" /> : <MonitorIcon className="size-5" />}
                       <div>
                         <div className="font-medium">{d.label}</div>
                         <div className="text-[12.5px] text-muted-foreground">{d.requirement}</div>
@@ -96,6 +96,12 @@ function Downloads() {
             The installers aren't code-signed yet. On macOS, if Systo won't open the first time, choose{" "}
             <span className="text-foreground">Open Anyway</span> in System Settings › Privacy &amp; Security. On Windows, choose{" "}
             <span className="text-foreground">More info › Run anyway</span> when SmartScreen asks.
+            {downloads.linux && (
+              <>
+                {" "}
+                On Linux, extract the archive and run <span className="text-foreground">./installer</span>.
+              </>
+            )}
           </p>
           <div className="flex gap-5 md:justify-end">
             <a href="/changelog/" className="inline-flex items-center gap-1 text-foreground hover:underline">
