@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Systo
+Comment=Processes, performance and a Dynamic Island on Hyprland
+Exec=systo
+Icon=dev.systo.monitor
+Terminal=false
+StartupWMClass=Systo
+Categories=System;Monitor;

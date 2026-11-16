@@ -1,6 +1,6 @@
 {
   "name": "systo",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "scripts": {
     "dev": "farm dev --desktop",
@@ -9,6 +9,7 @@
     "build:web": "farm build",
     "icons": "node scripts/gen-icons.mjs",
     "type-check": "tsc --noEmit",
+    "build:linux-packages": "node scripts/build-linux-packages.mjs",
     "build:installer": "pnpm icons && pnpm build && node scripts/build-installer.mjs"
   },
   "dependencies": {

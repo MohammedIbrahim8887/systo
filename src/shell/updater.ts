@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { Updater, Utils } from "electrobun/main";
 import type { UpdateState } from "../lib/update-types";
 
@@ -27,6 +29,24 @@ export class AppUpdater {
 
   async start() {
     const info = await Updater.getLocalInfo().catch(() => null);
+    let packageFormat = "";
+    if (process.platform === "linux") {
+      try {
+        packageFormat = readFileSync(join(dirname(process.execPath), "..", "Resources", "package-format"), "utf8").trim();
+      } catch {
+        // The standard installer has no package marker.
+      }
+    }
+    if (packageFormat) {
+      this.set({
+        phase: "unavailable",
+        version: info?.version ?? "",
+        error: packageFormat === "appimage"
+          ? "Download a newer AppImage from the Systo website to update."
+          : "Install a newer Systo package with your package manager to update.",
+      });
+      return;
+    }
     if (!info?.baseUrl || !info.hash) {
       this.set({ phase: "unavailable", version: info?.version ?? "" });
       return;

@@ -89,6 +89,17 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build the desktop app
         run: pnpm build
+      - name: Install Linux packaging tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y rpm cpio desktop-file-utils
+          bash scripts/setup-linux-packaging.sh "$RUNNER_TEMP/systo-tools"
+          echo "$RUNNER_TEMP/systo-tools" >> "$GITHUB_PATH"
+      - name: Build DEB, RPM and AppImage
+        run: node scripts/build-linux-packages.mjs
+      - name: Verify Linux packages
+        run: bash scripts/verify-linux-packages.sh
+
       - name: Collect the installer and update files
         run: |
           mkdir -p release
@@ -123,7 +134,7 @@ jobs:
             echo
             echo "### Checksums (SHA-256)"
             echo '```'
-            (cd artifacts && sha256sum Systo-Installer-arm64.dmg Systo-Setup-x64.exe Systo-Windows-x64.zip Systo-Linux-x64.tar.gz)
+            (cd artifacts && sha256sum Systo-Installer-arm64.dmg Systo-Setup-x64.exe Systo-Windows-x64.zip Systo-Linux-x64.tar.gz Systo-Linux-x64.deb Systo-Linux-x64.rpm Systo-Linux-x64.AppImage)
             echo '```'
           } >> notes.md
           cat notes.md

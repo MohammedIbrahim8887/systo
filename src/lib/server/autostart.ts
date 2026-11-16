@@ -42,6 +42,8 @@ function windowsLauncher(): string | null {
 
 /** The Electrobun launcher beside the bundled bun. */
 function linuxLauncher(): string | null {
+  // AppImage mounts are temporary; register the original downloaded image instead.
+  if (process.env.APPIMAGE && existsSync(process.env.APPIMAGE)) return process.env.APPIMAGE;
   const launcher = join(dirname(process.execPath), "launcher");
   return /\/bun$/.test(process.execPath) && existsSync(launcher) ? launcher : null;
 }

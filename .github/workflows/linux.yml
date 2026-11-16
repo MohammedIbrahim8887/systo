@@ -38,6 +38,17 @@ jobs:
       - name: Build the desktop app
         run: pnpm build
 
+      - name: Install Linux packaging tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y rpm cpio desktop-file-utils
+          bash scripts/setup-linux-packaging.sh "$RUNNER_TEMP/systo-tools"
+          echo "$RUNNER_TEMP/systo-tools" >> "$GITHUB_PATH"
+      - name: Build DEB, RPM and AppImage
+        run: node scripts/build-linux-packages.mjs
+      - name: Verify Linux packages
+        run: bash scripts/verify-linux-packages.sh
+
       - name: Collect the installer
         run: |
           find .farm/output/desktop/dist -maxdepth 2 -type f -printf '%p %s\n'

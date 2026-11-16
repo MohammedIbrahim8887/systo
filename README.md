@@ -50,7 +50,11 @@ pnpm build:installer
 
 The installer is written to `dist/Systo Installer.app` and the disk image to `dist/Systo-Installer-arm64.dmg` (`x64` on an Intel host). See [installer documentation](installer/README.md) for installation behavior and native tests.
 
-On Linux, `pnpm build` writes `.farm/output/desktop/dist/update/linux-x64-Systo-Setup.tar.gz`. Extract it and run `./installer`: Systo is installed under `~/.local/share/dev.systo.monitor` and added to the app launcher.
+On Linux, `pnpm build` writes `.farm/output/desktop/dist/update/linux-x64-Systo-Setup.tar.gz`. Extract it and run `./installer`: Systo is installed under `~/.local/share/dev.systo.monitor` and added to the app launcher. This archive works on Arch / Omarchy and keeps in-app updates.
+
+Linux releases also include `Systo-Linux-x64.deb` (Ubuntu 24.04+ / compatible Debian systems with glibc 2.38+), `Systo-Linux-x64.rpm` (Fedora with glibc 2.38+) and `Systo-Linux-x64.AppImage`. Install packages with `sudo apt install ./Systo-Linux-x64.deb` or `sudo dnf install ./Systo-Linux-x64.rpm`. For AppImage, run `chmod +x Systo-Linux-x64.AppImage` and `./Systo-Linux-x64.AppImage`. AppImage still requires the GTK / WebKitGTK runtime packages listed above; if FUSE isn't available, use `./Systo-Linux-x64.AppImage --appimage-extract-and-run`. Update DEB/RPM installations by installing a newer package; replace an AppImage with a newer download. All formats include Hyprland's Dynamic Island and work as a normal main window and tray on other desktops.
+
+To package on an x86_64 Linux host after `pnpm build`, install the pinned tools with `bash scripts/setup-linux-packaging.sh /tmp/systo-tools`, add that directory to `PATH`, then run `pnpm build:linux-packages`. The script reuses Electrobun's built update payload and writes the three extra packages into `release/`.
 
 Builds currently use ad-hoc signing for local use. Developer ID signing and Apple notarization are not configured.
 

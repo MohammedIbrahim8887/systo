@@ -84,7 +84,8 @@ function ago(at?: number) {
 }
 
 function updateHint(update: UpdateState | undefined, desktop: boolean): string {
-  if (!desktop || !update || update.phase === "unavailable") return "Available in the installed app.";
+  if (!desktop || !update) return "Available in the installed app.";
+  if (update.phase === "unavailable") return update.error ?? "Available in the installed app.";
   const current = update.version ? `Systo ${update.version}` : "Systo";
   switch (update.phase) {
     case "checking":

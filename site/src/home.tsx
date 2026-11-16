@@ -10,7 +10,7 @@ import { ProcessesReplica } from "./components/processes";
 import { Proofs } from "./components/proofs";
 import { RELEASES } from "./lib/changelog";
 import { useDemo } from "./lib/demo";
-import { RELEASES_URL, detectPlatform, formatSize, useDownloads, type Platform } from "./lib/releases";
+import { RELEASES_URL, detectPlatform, formatSize, isLinuxVisitor, useDownloads, type Platform } from "./lib/releases";
 
 function PlatformSwitch({ value, onChange }: { value: Platform; onChange: (p: Platform) => void }) {
   return (
@@ -38,13 +38,13 @@ function PlatformSwitch({ value, onChange }: { value: Platform; onChange: (p: Pl
 function Downloads() {
   const downloads = useDownloads();
   const latest = RELEASES.find((r) => !r.unreleased) ?? RELEASES[0];
-  const rows = [downloads.macos, downloads.windows, ...(downloads.linux ? [downloads.linux] : [])];
+  const rows = [downloads.macos, downloads.windows, downloads.linuxDeb, downloads.linuxRpm, downloads.linuxAppImage, downloads.linux].filter((d) => d !== undefined);
   return (
     <section id="download" className="border-t bg-sidebar">
       <div className="mx-auto max-w-[1120px] px-5 py-28 md:py-32">
         <h2 className="max-w-[18ch] text-[clamp(2rem,4vw,3rem)] leading-[1.05] font-medium tracking-[-0.03em] text-balance">Get Systo for your computer.</h2>
         <p className="mt-4 max-w-[56ch] text-[15.5px] leading-relaxed text-muted-foreground">
-          Free and open source. Once it's installed, Systo keeps itself up to date.
+          Free and open source. Choose the package for your system.
         </p>
         <div className="mt-12 overflow-hidden rounded-xl border bg-background">
           <table className="w-full text-left text-[14px]">
@@ -60,12 +60,13 @@ function Downloads() {
             </thead>
             <tbody className="divide-y">
               {rows.map((d) => (
-                <tr key={d.platform}>
+                <tr key={d.url}>
                   <td className="px-5 py-5">
                     <div className="flex items-center gap-3">
-                      {d.platform === "macos" ? <LaptopIcon className="size-5" /> : d.platform === "linux" ? <SquareTerminalIcon className="size-5" /> : <MonitorIcon className="size-5" />}
+                      {d.platform === "macos" ? <LaptopIcon className="size-5 shrink-0" /> : d.platform === "linux" ? <SquareTerminalIcon className="size-5 shrink-0" /> : <MonitorIcon className="size-5 shrink-0" />}
                       <div>
                         <div className="font-medium">{d.label}</div>
+                        <div className="text-[12.5px] text-muted-foreground sm:hidden">{d.kind}</div>
                         <div className="text-[12.5px] text-muted-foreground">{d.requirement}</div>
                       </div>
                     </div>
@@ -81,6 +82,7 @@ function Downloads() {
                   <td className="px-5 py-5 text-right">
                     <a
                       href={d.url}
+                      aria-label={`Download Systo for ${d.label} (${d.kind})`}
                       className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3.5 text-[13px] font-medium text-primary-foreground transition-opacity hover:opacity-90"
                     >
                       <ArrowDownToLineIcon className="size-4" /> Download
@@ -99,7 +101,9 @@ function Downloads() {
             {downloads.linux && (
               <>
                 {" "}
-                On Linux, extract the archive and run <span className="text-foreground">./installer</span>.
+                On Arch or Omarchy, extract the archive and run <span className="text-foreground">./installer</span>.
+                {" "}DEB and RPM packages install through your package manager. Make the AppImage executable to run it.
+                {" "}Every Linux format includes the Dynamic Island on Hyprland; other desktops get the main window and tray.
               </>
             )}
           </p>
@@ -121,6 +125,7 @@ function Home() {
   const [platform, setPlatform] = useState<Platform>(detectPlatform);
   const demo = useDemo(platform);
   const downloads = useDownloads();
+  const primary = isLinuxVisitor() ? downloads.linuxAppImage ?? downloads.linux : downloads[platform];
   const other: Platform = platform === "macos" ? "windows" : "macos";
 
   return (
@@ -141,12 +146,12 @@ function Home() {
               <BlurText text="And what's safe to stop." animateBy="words" delay={60} className="justify-center text-muted-foreground" />
             </h1>
             <p className="mt-6 max-w-[58ch] text-[clamp(1rem,1.4vw,1.15rem)] leading-relaxed text-muted-foreground text-balance">
-              Systo is a calm process manager for macOS and Windows. Clear names, honest numbers, and a Dynamic Island with your busiest apps one hover away.
+              Systo is a calm process manager for macOS, Windows and Linux. Clear names, honest numbers, and a Dynamic Island with your busiest apps one hover away.
             </p>
             <div className="mt-9 flex flex-col items-center gap-4">
-              <DownloadButton download={downloads[platform]} />
+              <DownloadButton download={primary} />
               <p className="text-[13px] text-muted-foreground tnum">
-                Version {downloads[platform].version} · {downloads[platform].requirement} ·{" "}
+                Version {primary.version} · {primary.requirement} ·{" "}
                 <a href={downloads[other].url} className="text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground">
                   Get it for {downloads[other].label}
                 </a>

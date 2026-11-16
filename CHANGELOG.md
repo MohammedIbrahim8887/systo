@@ -3,6 +3,16 @@
 All notable changes to Systo. The release workflow publishes each version's section as its
 GitHub release notes, and the website's changelog page renders this file.
 
+## [0.1.4] - 2026-11-16
+
+### Added
+- Linux downloads in DEB, RPM and AppImage formats, alongside the installer archive for Arch and Omarchy. Every format includes the Dynamic Island on Hyprland.
+- The download page lists available Linux packages and offers Linux visitors a Linux download.
+
+### Fixed
+- AppImage's Open at login setting now starts the downloaded image rather than a temporary mount.
+- Package installations explain how to update without attempting to overwrite managed or read-only files.
+
 ## [0.1.3] - 2026-11-16
 
 ### Added
