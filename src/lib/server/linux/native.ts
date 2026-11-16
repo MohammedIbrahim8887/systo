@@ -60,49 +60,41 @@ function read(file: string): string | null {
   }
 }
 
-interface StaticInfo {
-  start: string;
+interface Identity {
   uid: number;
   path: string;
   readable: boolean;
 }
 
-/** Facts that don't change while a process lives, keyed by pid and checked against its start time. */
-const statics = new Map<number, StaticInfo>();
-
-function staticInfo(pid: number, start: string, kthread: boolean): StaticInfo {
-  const known = statics.get(pid);
-  if (known && known.start === start && (known.readable || known.path)) return known;
+/**
+ * Who a process runs as and what it runs. Read on every sample, not cached by pid: `exec` and
+ * `setuid` change both without changing the pid or the start time (a shell running `exec firefox`).
+ */
+function identity(dir: string, kthread: boolean): Identity {
   let uid = 0;
   try {
-    uid = statSync(`/proc/${pid}`).uid;
+    uid = statSync(dir).uid;
   } catch {
     // exited between readdir and stat
   }
-  let path = "";
-  let readable = false;
-  if (!kthread) {
-    try {
-      path = readlinkSync(`/proc/${pid}/exe`).replace(/ \(deleted\)$/, "");
-      readable = true;
-    } catch {
-      // Another user's process: the command line is world-readable and usually starts with the path.
-      const first = (read(`/proc/${pid}/cmdline`) ?? "").split("\0")[0] ?? "";
-      path = first.startsWith("/") ? first.split(" ")[0] : "";
-    }
+  if (kthread) return { uid, path: "", readable: false };
+  try {
+    return { uid, path: readlinkSync(`${dir}/exe`).replace(/ \(deleted\)$/, ""), readable: true };
+  } catch {
+    // Another user's process: the command line is world-readable and usually starts with the path.
+    const first = (read(`${dir}/cmdline`) ?? "").split("\0")[0] ?? "";
+    return { uid, path: first.startsWith("/") ? first.split(" ")[0] : "", readable: false };
   }
-  const info = { start, uid, path, readable };
-  statics.set(pid, info);
-  return info;
 }
 
-function readProcs(): LinuxProc[] {
+/** Every process under a proc mount; the argument is for tests, which read a fixture directory. */
+export function readProcs(proc = "/proc"): LinuxProc[] {
   const procs: LinuxProc[] = [];
-  const seen = new Set<number>();
-  for (const name of readdirSync("/proc")) {
+  for (const name of readdirSync(proc)) {
     const pid = Number(name);
     if (!Number.isInteger(pid) || pid <= 0) continue;
-    const stat = read(`/proc/${pid}/stat`);
+    const dir = `${proc}/${pid}`;
+    const stat = read(`${dir}/stat`);
     if (!stat) continue;
     // "pid (comm) state ppid …": comm may contain spaces and parentheses, so split on the last ")".
     const open = stat.indexOf("(");
@@ -110,12 +102,12 @@ function readProcs(): LinuxProc[] {
     if (open < 0 || close < 0) continue;
     const comm = stat.slice(open + 1, close);
     const f = stat.slice(close + 2).split(" ");
-    // f[0] state, f[1] ppid, f[6] flags, f[11] utime, f[12] stime, f[19] starttime
+    // f[0] state, f[1] ppid, f[6] flags, f[11] utime, f[12] stime
     const kthread = (Number(f[6]) & PF_KTHREAD) !== 0 || pid === 2;
-    const info = staticInfo(pid, f[19] ?? "", kthread);
+    const info = identity(dir, kthread);
     let memory = 0;
     if (!kthread) {
-      const statm = read(`/proc/${pid}/statm`)?.split(" ");
+      const statm = read(`${dir}/statm`)?.split(" ");
       if (statm) {
         const resident = Number(statm[1]) || 0;
         const shared = Number(statm[2]) || 0;
@@ -126,13 +118,12 @@ function readProcs(): LinuxProc[] {
     let ioWrite = 0;
     let readable = info.readable;
     if (readable) {
-      const io = read(`/proc/${pid}/io`);
+      const io = read(`${dir}/io`);
       if (io) {
         ioRead = Number(/^read_bytes: (\d+)/m.exec(io)?.[1] ?? 0);
         ioWrite = Number(/^write_bytes: (\d+)/m.exec(io)?.[1] ?? 0);
       } else readable = false;
     }
-    seen.add(pid);
     procs.push({
       pid,
       ppid: Number(f[1]) || 0,
@@ -147,7 +138,6 @@ function readProcs(): LinuxProc[] {
       readable,
     });
   }
-  if (statics.size > seen.size + 256) for (const pid of statics.keys()) if (!seen.has(pid)) statics.delete(pid);
   return procs;
 }
 

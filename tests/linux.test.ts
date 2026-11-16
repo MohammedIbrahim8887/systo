@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseDesktopEntry, programOf } from "../src/lib/server/linux/apps";
 import { classifyLinux, safetyLinux } from "../src/lib/server/linux/classify";
+import { readProcs } from "../src/lib/server/linux/native";
 import { parseSockets } from "../src/lib/server/linux/network";
 import { autostartEntries, toggleAutostart } from "../src/lib/server/linux/startup";
 
@@ -100,5 +101,18 @@ test("turning a bare override back on removes it instead of hiding the system en
     expect(toggleAutostart("off.desktop", false, dirs[0], [dirs[1]]).ok).toBe(true);
     expect(readFileSync(join(dirs[0], "off.desktop"), "utf8")).toContain("Hidden=true");
     expect(autostartEntries(dirs).map((e) => e.enabled)).toEqual([false]);
+  });
+});
+
+test("readProcs follows a process that replaces its executable", () => {
+  // Same pid and start time before and after, as with a shell running `exec firefox`.
+  const stat = `4242 (bash) S 1 4242 4242 0 -1 4194304 ${"0 ".repeat(4)}7 3 ${"0 ".repeat(6)}991234 ${"0 ".repeat(30)}`;
+  withFiles({ "4242/stat": stat, "4242/statm": "500 300 100 1 0 50 0\n", "4242/io": "read_bytes: 4096\nwrite_bytes: 8192\n" }, (root) => {
+    const exe = join(root, "4242", "exe");
+    symlinkSync("/usr/bin/bash", exe);
+    expect(readProcs(root)).toMatchObject([{ pid: 4242, ppid: 1, path: "/usr/bin/bash", cpuNs: 1e8, memory: 200 * 4096, ioRead: 4096, readable: true }]);
+    rmSync(exe);
+    symlinkSync("/usr/lib/firefox/firefox", exe);
+    expect(readProcs(root)[0].path).toBe("/usr/lib/firefox/firefox");
   });
 });
