@@ -58,6 +58,25 @@ test("installed startup defaults on once and preserves user and OS opt-outs", ()
       Object.defineProperty(process, "execPath", { value: "/usr/local/bin/bun" });
       await initializeAutostart();
       expect(existsSync(preference)).toBe(false);
+      // Linux uses the same default and remembers both Settings and XDG opt-outs.
+      delete process.env.APPIMAGE;
+      process.env.XDG_CONFIG_HOME = join(fixture, "config");
+      const bin = join(fixture, "bin", "bun").split(String.fromCharCode(92)).join("/");
+      mkdirSync(dirname(bin), { recursive: true });
+      writeFileSync(join(dirname(bin), "launcher"), "fixture");
+      Object.defineProperty(process, "platform", { value: "linux" });
+      Object.defineProperty(process, "execPath", { value: bin });
+      const entry = join(fixture, "config", "autostart", "dev.systo.monitor.desktop");
+      await initializeAutostart();
+      expect((await autostartState()).enabled).toBe(true);
+      expect(readFileSync(entry, "utf8")).toContain("--background");
+      await setAutostart(false);
+      await initializeAutostart();
+      expect(existsSync(entry)).toBe(false);
+      rmSync(preference);
+      writeFileSync(entry, "[Desktop Entry]\\nHidden=true\\n");
+      await initializeAutostart();
+      expect((await autostartState()).enabled).toBe(false);
     `], { cwd: process.cwd(), encoding: "utf8" });
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);

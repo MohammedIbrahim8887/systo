@@ -3,6 +3,16 @@
 All notable changes to Systo. The release workflow publishes each version's section as its
 GitHub release notes, and the website's changelog page renders this file.
 
+## [0.1.5] - 2026-11-16
+
+### Improved
+- Systo keeps monitoring in the background after the last window closes. Open it again from the menu bar or tray, or choose Quit Systo to exit.
+- Installed apps enable background startup at login by default on macOS, Windows and Linux. Existing opt-outs are preserved, and automatic startup can be disabled in Settings.
+
+### Fixed
+- The disk analyzer no longer stays on Scanning when a scan completes or fails before the first progress update.
+- Scan failures display their error even when an older scan result is available.
+
 ## [0.1.4] - 2026-11-16
 
 ### Added
