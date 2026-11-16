@@ -8,6 +8,7 @@ import { LinuxIslandController } from "./shell/island-linux";
 import { WinIslandController } from "./shell/island-win";
 import { TRAY_ICON_PNG, TRAY_ICON_PNG_WINDOWS } from "./shell/tray-icon";
 import { AppUpdater } from "./shell/updater";
+import { initializeAutostart } from "./lib/server/autostart";
 import type { UpdateState } from "./lib/update-types";
 
 const IS_WINDOWS = process.platform === "win32";
@@ -217,6 +218,10 @@ export default defineDesktop<BrowserWindow>({
     } catch (error) {
       console.error("[systo] tray unavailable", error);
     }
+
+    // Only hide login launches once there is a tray entry to open the app again.
+    if (tray && process.argv.includes("--background")) window.hide();
+    void initializeAutostart().catch((error) => console.error("[systo] couldn't enable login startup", error));
 
     // Starts after the tray exists, since every state change refreshes its menu.
     void updater.start();

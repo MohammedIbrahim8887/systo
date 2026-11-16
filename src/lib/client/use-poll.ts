@@ -11,7 +11,7 @@ export function usePoll<T>(url: string | null, interval: number, paused = false,
   const pauseHidden = !options.whenHidden;
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const kick = useRef<() => void>(() => {});
+  const kick = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     if (!url) return;
@@ -44,7 +44,7 @@ export function usePoll<T>(url: string | null, interval: number, paused = false,
       else if (!paused) void tick();
     };
 
-    kick.current = () => void tick();
+    kick.current = tick;
     void tick();
     document.addEventListener("visibilitychange", onVisibility);
     return () => {

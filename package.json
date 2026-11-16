@@ -1,6 +1,6 @@
 {
   "name": "systo",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "scripts": {
     "dev": "farm dev --desktop",
@@ -34,6 +34,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "electrobun": "^2.0.6",
+    "happy-dom": "^21.0.4",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.3.3"
   },
@@ -44,6 +45,9 @@
   "productName": "Systo",
   "description": "A simple, monochrome process manager for macOS, Windows and Linux with a Dynamic Island.",
   "electrobun": {
+    "runtime": {
+      "exitOnLastWindowClosed": false
+    },
     "release": {
       "baseUrl": "https://github.com/MohammedIbrahim8887/systo/releases/latest/download",
       "generatePatch": false

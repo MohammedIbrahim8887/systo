@@ -5,6 +5,7 @@ A clearer view of your computer. Systo is a system monitor for macOS, Windows an
 ## Features
 
 - **Processes:** see apps and their helpers in groups, inspect resource usage, learn what a process does, and end tasks.
+- **Background monitoring:** closing the window keeps Systo in the menu bar or notification area. Use Open Systo to return or Quit Systo to exit. Installed apps enable background startup at login by default; turn it off in Settings.
 - **Performance:** live CPU, memory, disk, and network charts.
 - **History:** find the biggest resource users over 1 hour, 3 hours, 1 day, 7 days, 30 days, or 90 days. History builds as Systo runs and is stored locally in SQLite.
 - **Startup:** manage login items, launch agents, and system daemons with reversible switches. System daemons require administrator authorization; registered helper discovery is an explicit action.

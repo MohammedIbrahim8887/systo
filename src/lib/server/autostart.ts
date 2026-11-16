@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "
 import { homedir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { output, run } from "./exec";
+import { appDataFile } from "./paths";
 
 /**
  * "Open at login" for Systo itself.
@@ -69,7 +70,7 @@ function linuxSet(enabled: boolean): AutostartState {
     mkdirSync(dirname(linuxEntry()), { recursive: true });
     // The icon Electrobun's installer puts beside the app, the same one its launcher entry uses.
     const icon = join(dirname(launcher), "..", "Resources", "appIcon.png");
-    const lines = ["[Desktop Entry]", "Type=Application", "Name=Systo", "Comment=Process manager", `Exec="${launcher}"`, ...(existsSync(icon) ? [`Icon=${icon}`] : []), "Terminal=false"];
+    const lines = ["[Desktop Entry]", "Type=Application", "Name=Systo", "Comment=Process manager", `Exec="${launcher}" --background`, ...(existsSync(icon) ? [`Icon=${icon}`] : []), "Terminal=false"];
     writeFileSync(linuxEntry(), `${lines.join("\n")}\n`);
   } else {
     try {
@@ -111,6 +112,9 @@ async function macSet(enabled: boolean): Promise<AutostartState> {
     <string>/usr/bin/open</string>
     <string>-a</string>
     <string>${xml(app)}</string>
+    <string>-g</string>
+    <string>--args</string>
+    <string>--background</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -148,7 +152,7 @@ async function windowsSet(enabled: boolean): Promise<AutostartState> {
   const launcher = windowsLauncher();
   if (!launcher) return { available: false, enabled: false, reason: "Available in the installed app." };
   if (enabled) {
-    await run("reg.exe", ["add", RUN_KEY, "/v", RUN_VALUE, "/t", "REG_SZ", "/d", `"${launcher}"`, "/f"], 4000);
+    await run("reg.exe", ["add", RUN_KEY, "/v", RUN_VALUE, "/t", "REG_SZ", "/d", `"${launcher}" --background`, "/f"], 4000);
     await run("reg.exe", ["add", APPROVED_KEY, "/v", RUN_VALUE, "/t", "REG_BINARY", "/d", "020000000000000000000000", "/f"], 4000);
   } else {
     await run("reg.exe", ["delete", RUN_KEY, "/v", RUN_VALUE, "/f"], 4000);
@@ -164,9 +168,38 @@ export function autostartState(): Promise<AutostartState> {
   return Promise.resolve({ available: false, enabled: false, reason: "Not supported on this system." });
 }
 
-export function setAutostart(enabled: boolean): Promise<AutostartState> {
-  if (process.platform === "win32") return windowsSet(enabled);
-  if (process.platform === "darwin") return macSet(enabled);
-  if (process.platform === "linux") return Promise.resolve(linuxSet(enabled));
-  return autostartState();
+const PREFERENCE_FILE = appDataFile("autostart.json");
+
+function rememberAutostart() {
+  mkdirSync(dirname(PREFERENCE_FILE), { recursive: true });
+  writeFileSync(PREFERENCE_FILE, JSON.stringify({ initialized: true }));
+}
+
+export async function setAutostart(enabled: boolean): Promise<AutostartState> {
+  let state: AutostartState;
+  if (process.platform === "win32") state = await windowsSet(enabled);
+  else if (process.platform === "darwin") state = await macSet(enabled);
+  else if (process.platform === "linux") state = linuxSet(enabled);
+  else state = await autostartState();
+  if (state.available && state.enabled === enabled) rememberAutostart();
+  return state;
+}
+
+/** Enable login startup once in the installed app; subsequent launches respect opt-outs. */
+export async function initializeAutostart(): Promise<void> {
+  try {
+    if (JSON.parse(readFileSync(PREFERENCE_FILE, "utf8"))?.initialized) return;
+  } catch {
+    // First launch, or an unreadable preference. Retry registration if needed.
+  }
+  const state = await autostartState();
+  if (!state.available) return;
+  // Preserve OS opt-outs; update enabled registrations to use background launch.
+  const registered = process.platform === "darwin"
+    ? existsSync(plistPath())
+    : process.platform === "linux"
+      ? existsSync(linuxEntry())
+      : (await run("reg.exe", ["query", RUN_KEY, "/v", RUN_VALUE], 4000)).code === 0;
+  if (registered && !state.enabled) rememberAutostart();
+  else await setAutostart(true);
 }
