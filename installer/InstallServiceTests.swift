@@ -13,8 +13,16 @@ import Foundation
         let executable = contents.appendingPathComponent("MacOS/Systo")
         try Data("#!/bin/sh\nexit 0\n".utf8).write(to: executable)
         try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+        // Stand in for a downloaded installer, whose payload carries the quarantine flag.
+        let quarantine = Array("0081;00000000;Systo;".utf8)
+        for url in [source, executable] {
+            assert(setxattr(url.path, "com.apple.quarantine", quarantine, quarantine.count, 0, XATTR_NOFOLLOW) == 0)
+        }
         let directory = root.appendingPathComponent("Applications")
         let target = try InstallService.install(source: source, directory: directory)
+        for url in [target, target.appendingPathComponent("Contents/MacOS/Systo")] {
+            assert(getxattr(url.path, "com.apple.quarantine", nil, 0, 0, XATTR_NOFOLLOW) == -1, "Quarantine left on \(url.path)")
+        }
         assert(fm.isExecutableFile(atPath: target.appendingPathComponent("Contents/MacOS/Systo").path))
         let oldMarker = target.appendingPathComponent("old")
         try Data().write(to: oldMarker)
@@ -34,6 +42,6 @@ import Foundation
             fatalError("Accepted symlink target")
         } catch InstallFailure.unsafeDestination {}
         assert(fm.fileExists(atPath: executable.path))
-        print("PASS: install, replace, staging cleanup, invalid payload preservation, symlink protection")
+        print("PASS: install, quarantine removal, replace, staging cleanup, invalid payload preservation, symlink protection")
     }
 }

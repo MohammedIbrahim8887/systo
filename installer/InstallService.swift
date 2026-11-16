@@ -31,6 +31,7 @@ struct InstallService {
         var preserveBackup = false
         defer { if !preserveBackup { try? fm.removeItem(at: stage) } }
         try fm.copyItem(at: source, to: staged)
+        removeQuarantine(staged)
         if fm.fileExists(atPath: target.path) {
             try fm.moveItem(at: target, to: backup)
             hasBackup = true
@@ -49,5 +50,15 @@ struct InstallService {
             throw error
         }
         return target
+    }
+
+    // A downloaded installer is quarantined, and macOS passes that on to everything it writes.
+    // A quarantined app that Finder did not move runs from a read-only App Translocation mount,
+    // where Systo cannot unpack itself on first launch ("The application could not be installed").
+    static func removeQuarantine(_ bundle: URL) {
+        let strip = { (url: URL) in _ = removexattr(url.path, "com.apple.quarantine", XATTR_NOFOLLOW) }
+        strip(bundle)
+        guard let items = FileManager.default.enumerator(at: bundle, includingPropertiesForKeys: nil) else { return }
+        for case let url as URL in items { strip(url) }
     }
 }

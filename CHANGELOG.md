@@ -3,6 +3,12 @@
 All notable changes to Systo. The release workflow publishes each version's section as its
 GitHub release notes, and the website's changelog page renders this file.
 
+## [0.1.2] - 2026-11-16
+
+### Fixed
+- **macOS installation.** Fixed the first-launch “The application could not be installed” error caused by macOS running the downloaded app from a read-only location. The installer now removes the quarantine flag from its installed copy so Systo can finish unpacking.
+- If installation failed with 0.1.1, download and run the 0.1.2 installer below. Existing settings are retained.
+
 ## [0.1.1] - 2026-11-15
 
 ### Added
