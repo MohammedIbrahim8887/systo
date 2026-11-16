@@ -33,8 +33,12 @@ export async function POST(request: Request) {
       if (typeof body.path !== "string" || !isAbsolutePath(body.path)) return Response.json({ ok: false, message: "Bad path." }, { status: 400 });
       return Response.json(await analyzer.trash(slash(body.path)));
     case "choose": {
-      const path = await analyzer.choose();
-      return Response.json({ ok: Boolean(path), path });
+      try {
+        const path = await analyzer.choose();
+        return Response.json({ ok: Boolean(path), path });
+      } catch (error) {
+        return Response.json({ ok: false, message: (error as Error).message });
+      }
     }
     default:
       return Response.json({ ok: false, message: "Unknown action." }, { status: 400 });

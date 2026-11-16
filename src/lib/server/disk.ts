@@ -695,6 +695,7 @@ try {
     }
   }
 
+  /** The folder the user picked, or null when they cancelled. Throws when no dialog can be shown. */
   async choose(): Promise<string | null> {
     if (IS_WIN) {
       const { stdout } = await powershell(
@@ -711,7 +712,6 @@ $owner.Dispose()`,
     }
     if (IS_LINUX) {
       const title = "Choose a folder for Systo to analyze";
-      // Whichever dialog the desktop has; GTK through Python is there on any system that runs Systo's window.
       const gtk = `import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk
@@ -719,17 +719,19 @@ GLib.set_prgname("Systo")
 d = Gtk.FileChooserNative.new(${JSON.stringify(title)}, None, Gtk.FileChooserAction.SELECT_FOLDER, None, None)
 if d.run() == Gtk.ResponseType.ACCEPT:
     print(d.get_filename(), end="")`;
-      const dialogs: Array<[string, string[]]> = [
-        ["zenity", ["--file-selection", "--directory", `--title=${title}`]],
-        ["kdialog", ["--getexistingdirectory", HOME, "--title", title]],
-        ["python3", ["-c", gtk]],
+      // Whichever dialog the desktop has. Running Systo's window takes GTK but not Python's
+      // bindings for it, so each one is checked for what it actually needs.
+      const dialogs: Array<{ probe: string; tool: string; args: string[] }> = [
+        { probe: "command -v zenity", tool: "zenity", args: ["--file-selection", "--directory", `--title=${title}`] },
+        { probe: "command -v kdialog", tool: "kdialog", args: ["--getexistingdirectory", HOME, "--title", title] },
+        { probe: `python3 -c 'import gi; gi.require_version("Gtk", "3.0"); from gi.repository import Gtk'`, tool: "python3", args: ["-c", gtk] },
       ];
-      for (const [tool, args] of dialogs) {
-        if ((await run("/bin/sh", ["-c", `command -v ${tool}`], 2000)).code !== 0) continue;
+      for (const { probe, tool, args } of dialogs) {
+        if ((await run("/bin/sh", ["-c", probe], 5000)).code !== 0) continue;
         const { code, stdout } = await run(tool, args, 10 * 60_000);
         return code === 0 && stdout.trim().startsWith("/") ? stdout.trim() : null;
       }
-      return null;
+      throw new Error("No folder dialog is installed. Install zenity, kdialog or python-gobject to choose a folder.");
     }
     const { code, stdout } = await run(
       "/usr/bin/osascript",

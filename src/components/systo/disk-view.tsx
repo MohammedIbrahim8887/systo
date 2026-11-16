@@ -477,7 +477,9 @@ export function DiskView() {
   const startScan = async (root: string) => {
     let target = root;
     if (root === "choose") {
-      const chosen = await post<{ ok: boolean; path?: string }>({ action: "choose" });
+      const chosen = await post<{ ok: boolean; path?: string; message?: string }>({ action: "choose" });
+      // No message means the dialog was cancelled.
+      if (chosen.message) toast.error(chosen.message);
       if (!chosen.ok || !chosen.path) return;
       target = chosen.path;
     }
