@@ -1,7 +1,25 @@
 import { expect, test } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { parseDesktopEntry, programOf } from "../src/lib/server/linux/apps";
 import { classifyLinux, safetyLinux } from "../src/lib/server/linux/classify";
 import { parseSockets } from "../src/lib/server/linux/network";
+import { autostartEntries, toggleAutostart } from "../src/lib/server/linux/startup";
+
+/** A scratch directory holding the given files, removed when the callback returns. */
+function withFiles(files: Record<string, string>, body: (root: string) => void) {
+  const root = mkdtempSync(join(tmpdir(), "systo-test-"));
+  try {
+    for (const [name, text] of Object.entries(files)) {
+      mkdirSync(join(root, name, ".."), { recursive: true });
+      writeFileSync(join(root, name), text);
+    }
+    body(root);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
 
 test("programOf finds the program in Exec lines", () => {
   expect(programOf("/usr/bin/google-chrome-stable %U")).toBe("/usr/bin/google-chrome-stable");
@@ -47,4 +65,40 @@ test("parseSockets reads per-socket byte counters and skips loopback and ownerle
     { pid: 6261, in: 156259, out: 190756 },
     { pid: 5310, in: 20, out: 10 },
   ]);
+});
+
+const SYSTEM_ENTRY = "[Desktop Entry]\nType=Application\nName=Sync\nExec=/usr/bin/sync-daemon --tray\nIcon=sync\n";
+
+test("a user's autostart override decides, even when it has nothing to show", () => {
+  withFiles(
+    {
+      "user/off.desktop": "[Desktop Entry]\nHidden=true\n",
+      "system/off.desktop": SYSTEM_ENTRY,
+      "user/elsewhere.desktop": `${SYSTEM_ENTRY}OnlyShowIn=NoSuchDesktop;\n`,
+      "system/elsewhere.desktop": SYSTEM_ENTRY,
+      "user/orphan.desktop": "[Desktop Entry]\nHidden=true\n",
+      "system/plain.desktop": SYSTEM_ENTRY,
+    },
+    (root) => {
+      const entries = autostartEntries([join(root, "user"), join(root, "system")]);
+      expect(entries.map((e) => [e.fileName, e.enabled, e.name, e.exec]).sort()).toEqual([
+        // Off, and named after the system entry the bare override turns off.
+        ["off.desktop", false, "Sync", "/usr/bin/sync-daemon --tray"],
+        ["plain.desktop", true, "Sync", "/usr/bin/sync-daemon --tray"],
+      ]);
+    },
+  );
+});
+
+test("turning a bare override back on removes it instead of hiding the system entry", () => {
+  withFiles({ "user/off.desktop": "[Desktop Entry]\nHidden=true\n", "system/off.desktop": SYSTEM_ENTRY }, (root) => {
+    const dirs = [join(root, "user"), join(root, "system")];
+    expect(toggleAutostart("off.desktop", true, dirs[0], [dirs[1]]).ok).toBe(true);
+    expect(existsSync(join(dirs[0], "off.desktop"))).toBe(false);
+    expect(autostartEntries(dirs).map((e) => e.enabled)).toEqual([true]);
+
+    expect(toggleAutostart("off.desktop", false, dirs[0], [dirs[1]]).ok).toBe(true);
+    expect(readFileSync(join(dirs[0], "off.desktop"), "utf8")).toContain("Hidden=true");
+    expect(autostartEntries(dirs).map((e) => e.enabled)).toEqual([false]);
+  });
 });

@@ -67,10 +67,15 @@ function appliesHere(entry: DesktopEntry): boolean {
   return true;
 }
 
-function autostartEntries(): AutostartEntry[] {
-  const found = new Map<string, AutostartEntry>();
-  // The user's directory comes first: a file there replaces the system entry of the same name.
-  for (const dir of [AUTOSTART_USER_DIR, ...AUTOSTART_SYSTEM_DIRS]) {
+/**
+ * Autostart entries by file name, the highest-priority copy deciding: the user's directory first,
+ * then the system ones. A copy that isn't shown (wrong desktop, nothing to run) still replaces
+ * the ones below it, and a bare `Hidden=true` override takes its name and command from the
+ * entry it turns off.
+ */
+export function autostartEntries(dirs = [AUTOSTART_USER_DIR, ...AUTOSTART_SYSTEM_DIRS]): AutostartEntry[] {
+  const found = new Map<string, AutostartEntry | null>();
+  for (const dir of dirs) {
     let names: string[];
     try {
       names = readdirSync(dir);
@@ -78,7 +83,10 @@ function autostartEntries(): AutostartEntry[] {
       continue;
     }
     for (const fileName of names) {
-      if (!fileName.endsWith(".desktop") || found.has(fileName)) continue;
+      if (!fileName.endsWith(".desktop")) continue;
+      const above = found.get(fileName);
+      // Settled by a copy above, unless that one only said "off" and left the rest to this one.
+      if (found.has(fileName) && (!above || above.exec)) continue;
       const file = join(dir, fileName);
       let text: string;
       try {
@@ -87,12 +95,16 @@ function autostartEntries(): AutostartEntry[] {
         continue;
       }
       const entry = parseDesktopEntry(file, text);
-      if (!entry || !entry.exec || !appliesHere(entry)) continue;
-      const gnomeOff = /^X-GNOME-Autostart-enabled\s*=\s*false\s*$/m.test(text);
-      found.set(fileName, { ...entry, fileName, enabled: !entry.hidden && !gnomeOff });
+      if (!entry || !appliesHere(entry)) {
+        found.set(fileName, null);
+        continue;
+      }
+      const off = entry.hidden || /^X-GNOME-Autostart-enabled\s*=\s*false\s*$/m.test(text);
+      if (above) found.set(fileName, entry.exec ? { ...entry, fileName, enabled: false } : null);
+      else found.set(fileName, entry.exec || off ? { ...entry, fileName, enabled: !off } : null);
     }
   }
-  return [...found.values()];
+  return [...found.values()].filter((entry): entry is AutostartEntry => Boolean(entry?.exec));
 }
 
 /** Memory, CPU and pids of the processes a command line starts, matched by program name. */
@@ -123,18 +135,20 @@ function setHidden(text: string, hidden: boolean): string {
   return lines.join("\n");
 }
 
-function toggleAutostart(fileName: string, enabled: boolean): StartupToggleResult {
+export function toggleAutostart(fileName: string, enabled: boolean, userDir = AUTOSTART_USER_DIR, systemDirs = AUTOSTART_SYSTEM_DIRS): StartupToggleResult {
   if (!/^[^/\0]+\.desktop$/.test(fileName)) return { ok: false, needsAdmin: false, message: "Unknown startup item." };
-  const userFile = join(AUTOSTART_USER_DIR, fileName);
-  const source = [userFile, ...AUTOSTART_SYSTEM_DIRS.map((dir) => join(dir, fileName))].find((file) => existsSync(file));
+  const userFile = join(userDir, fileName);
+  const system = systemDirs.map((dir) => join(dir, fileName)).find((file) => existsSync(file));
+  const source = existsSync(userFile) ? userFile : system;
   if (!source) return { ok: false, needsAdmin: false, message: "That startup item is gone." };
-  const system = AUTOSTART_SYSTEM_DIRS.map((dir) => join(dir, fileName)).find((file) => existsSync(file));
   try {
     const text = setHidden(readFileSync(source, "utf8"), !enabled);
-    // Back on and identical to the system entry: the override has nothing left to say.
-    if (enabled && system && existsSync(userFile) && text === readFileSync(system, "utf8")) rmSync(userFile);
+    // Back on, and either identical to the system entry or with no command of its own: the
+    // override has nothing left to say, and kept around it would hide the entry it sits on.
+    const spent = text === (system ? readFileSync(system, "utf8") : null) || !parseDesktopEntry(userFile, text)?.exec;
+    if (enabled && system && existsSync(userFile) && spent) rmSync(userFile);
     else {
-      mkdirSync(AUTOSTART_USER_DIR, { recursive: true });
+      mkdirSync(userDir, { recursive: true });
       writeFileSync(userFile, text);
     }
   } catch (error) {
