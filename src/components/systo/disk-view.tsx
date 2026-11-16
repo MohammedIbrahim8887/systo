@@ -469,8 +469,7 @@ export function DiskView() {
 
   useEffect(() => {
     setIntervalMs(scanning ? 450 : 30000);
-    if (data?.state.status === "scanning") setScanningHint(false);
-  }, [scanning, data?.state.status]);
+  }, [scanning]);
 
   useEffect(() => setHovered(null), [path, mode]);
 
@@ -483,14 +482,20 @@ export function DiskView() {
       if (!chosen.ok || !chosen.path) return;
       target = chosen.path;
     }
-    const res = await post<{ ok: boolean; message?: string }>({ action: "scan", root: target });
-    if (!res.ok) {
-      toast.error(res.message ?? "Couldn't start the scan");
-      return;
-    }
-    setPath(undefined);
     setScanningHint(true);
-    refresh();
+    try {
+      const res = await post<{ ok: boolean; message?: string }>({ action: "scan", root: target });
+      if (!res.ok) {
+        toast.error(res.message ?? "Couldn't start the scan");
+        return;
+      }
+      setPath(undefined);
+      await refresh();
+    } catch (error) {
+      toast.error("Couldn't start the scan", { description: (error as Error).message });
+    } finally {
+      setScanningHint(false);
+    }
   };
 
   const cancel = async () => {
@@ -592,11 +597,12 @@ export function DiskView() {
 
         {data && scanning && state && <ScanProgress state={state} onCancel={() => void cancel()} />}
 
+        {!scanning && state?.status === "error" && (
+          <div role="alert" className="mx-auto mb-2 max-w-3xl rounded-lg border px-3 py-2 text-[12px] text-muted-foreground">{state.error}</div>
+        )}
+
         {data && !scanning && !view && (
           <>
-            {state?.status === "error" && (
-              <div className="mx-auto mb-2 max-w-3xl rounded-lg border px-3 py-2 text-[12px] text-muted-foreground">{state.error}</div>
-            )}
             <EmptyState onScan={(root) => void startScan(root)} volume={data.volume} />
           </>
         )}
