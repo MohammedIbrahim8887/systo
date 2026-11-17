@@ -12,14 +12,15 @@ GitHub release notes, and the website's changelog page renders this file.
 
 ### Improved
 - **Faster initial loading.** Account placeholders appear immediately while provider checks and session scans update progressively. Shared work avoids duplicate checks across windows.
-- **Loading skeletons.** Consistent shadcn skeletons across the process table, performance view, island, and AI usage, with reduced-motion support.
+- **Loading skeletons.** Loading placeholders keep the process table, performance view, island, and AI usage readable while data arrives, with reduced-motion support.
 - **Reliable cost estimates.** Bundled public rates work offline and refresh in the background. Large session files are streamed; final Claude usage and distinct Codex responses are counted correctly. Shared history is counted once and labelled; partial estimates are marked.
+
+- **Clearer cost reporting.** Dollar totals labelled “API value” use public API list prices. Subscription charges are separate, and available limits and history depend on the provider and login source.
 
 ### Fixed
 - **macOS full-screen overlay.** The Dynamic Island now uses a native non-activating panel, keeping it visible over other applications and their full-screen Spaces. A single island stays on the primary display, without duplicate overlays on external monitors.
 - Account editing retains custom token-history folders, bulk connections report actual successes, and long account forms keep their action buttons visible.
 
-Dollar totals labelled “API value” are estimates at public API list prices, not subscription charges. Available quota and history data depend on the provider and login source.
 
 ## [0.1.6] - 2026-11-17
 
