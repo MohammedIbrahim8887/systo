@@ -80,12 +80,10 @@ export function createDiskScanner(
   attrList.setUint16(0, 5, true);
   attrList.setUint32(4, (ATTR_CMN_RETURNED_ATTRS | ATTR_CMN_NAME | ATTR_CMN_DEVID | ATTR_CMN_OBJTYPE | ATTR_CMN_FILEID | ATTR_CMN_ERROR) >>> 0, true);
   attrList.setUint32(16, ATTR_FILE_LINKCOUNT | ATTR_FILE_ALLOCSIZE, true);
-  const attrPtr = ffi ? ffi.ptr(attrList) : 0;
 
   const BUF_SIZE = 256 * 1024;
   const buf = new Uint8Array(BUF_SIZE);
   const view = new DataView(buf.buffer);
-  const bufPtr = ffi ? ffi.ptr(buf) : 0;
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
@@ -130,7 +128,9 @@ export function createDiskScanner(
       if (fd < 0) return false;
       try {
         for (;;) {
-          const count = lib!.getattrlistbulk(fd, attrPtr, bufPtr, BUF_SIZE, FSOPT_NOFOLLOW | FSOPT_PACK_INVAL_ATTRS);
+          // Keep the backing views captured by the scanner: numeric FFI pointers do not
+          // keep their buffers alive across GC between worker requests.
+          const count = lib!.getattrlistbulk(fd, ffi!.ptr(attrList), ffi!.ptr(buf), BUF_SIZE, FSOPT_NOFOLLOW | FSOPT_PACK_INVAL_ATTRS);
           if (count <= 0) {
             if (count < 0) denied++;
             break;

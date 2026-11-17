@@ -388,8 +388,10 @@ class DiskAnalyzer {
             publish();
           } else if (message.type === "result") complete(worker, message as unknown as DiskScanResult);
           else if (message.type === "error") {
-            // An unreadable folder shouldn't sink the scan; count it and move on.
-            complete(worker, { id: Number(message.id), node: { n: "", s: 0, f: 0, k: 1, c: [] }, topFiles: [], categories: {}, files: 0, dirs: 0, bytes: 0, denied: 1 });
+            // The scanner handles inaccessible entries itself. An exception is a scanner
+            // failure, not evidence that the folder is empty or needs Full Disk Access.
+            reject(new Error(`Couldn't scan ${displayPath(worker.task?.path ?? root)}: ${String(message.message)}`));
+            this.stopWorkers();
           }
         });
         this.workers.push(worker);
