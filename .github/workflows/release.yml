@@ -24,10 +24,15 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - uses: oven-sh/setup-bun@v2
       - name: Check the tag matches package.json
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
       - name: Build the app and the installer disk image
         run: pnpm build:installer
+      - name: Verify disk sizes after garbage collection in the release bundle
+        env:
+          SYSTO_SCANNER_BUNDLE: .farm/output/desktop/server/server/index.mjs
+        run: bun test tests/disk-scanner.test.ts tests/disk-analyzer.test.ts tests/disk-errors.test.ts
       - name: Collect release files
         run: |
           mkdir -p release

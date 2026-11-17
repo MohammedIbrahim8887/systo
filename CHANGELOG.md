@@ -3,6 +3,12 @@
 All notable changes to Systo. The release workflow publishes each version's section as its
 GitHub release notes, and the website's changelog page renders this file.
 
+## [0.1.6] - 2026-11-17
+
+### Fixed
+- **Disk sizes on macOS.** Keep native scanner buffers alive between worker requests. The bundled runtime could free the request buffer before a scan, causing readable folders to appear empty with 0 bytes and a misleading Full Disk Access warning.
+- Scanner exceptions now show their actual error instead of being reported as successful empty scans.
+
 ## [0.1.5] - 2026-11-16
 
 ### Improved
