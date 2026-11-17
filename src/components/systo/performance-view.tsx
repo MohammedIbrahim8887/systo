@@ -1,4 +1,5 @@
 "use client";
+import { Skeleton } from "@/components/ui/skeleton";
 
 import { OS, byOS } from "@/lib/platform";
 import { useMemo, useState } from "react";
@@ -138,6 +139,15 @@ export function PerformanceView({ snapshot }: { snapshot: Snapshot | null }) {
         </nav>
 
         <section className="scrollbar-thin min-w-0 flex-1 overflow-y-auto p-5">
+          {!snapshot ? (
+            <div role="status" aria-label="Loading performance" className="space-y-5">
+              <Skeleton className="h-8 w-40" />
+              <Skeleton className="h-64 w-full" />
+              <div className="grid grid-cols-3 gap-5">
+                {[0, 1, 2].map((i) => <Skeleton key={i} className="h-16" />)}
+              </div>
+            </div>
+          ) : <>
           <div className="flex items-end justify-between gap-4">
             <div>
               <h2 className="text-2xl font-semibold tracking-tight">{def.label}</h2>
@@ -250,6 +260,7 @@ export function PerformanceView({ snapshot }: { snapshot: Snapshot | null }) {
               </div>
             </div>
           )}
+          </>}
         </section>
       </div>
     </div>

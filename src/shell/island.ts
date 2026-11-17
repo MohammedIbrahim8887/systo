@@ -1,5 +1,5 @@
 import { BrowserWindow, Screen } from "electrobun/main";
-import { makeOverlay, notchScreen, orderFront, setClickThrough, setFrame, type ScreenGeometry } from "./objc";
+import { closeOverlay, makeOverlay, screenGeometries, orderFront, setClickThrough, setFrame, type ScreenGeometry } from "./objc";
 
 const WINDOW_WIDTH = 460;
 const PANEL_WIDTH = 440;
@@ -37,18 +37,18 @@ function place(geometry: ScreenGeometry): Placement {
     notchHeight,
     windowHeight,
     cocoa,
-    key: `${frame.x},${frame.y},${frame.width},${frame.height},${notchWidth},${notchHeight}`,
+    key: `${frame.x},${frame.y},${frame.width},${frame.height},${notchWidth},${notchHeight},${primaryHeight},${geometry.notchLeft},${geometry.notchRight}`,
   };
 }
 
-export class IslandController {
+class ScreenIslandController {
   private window: BrowserWindow | null = null;
+  private overlay: number | null = null;
   private placement: Placement | null = null;
   private expanded = false;
   private enterSince = 0;
   private leaveSince = 0;
   private poll: ReturnType<typeof setInterval> | null = null;
-  private geometryCheck = 0;
   private hasNotch = false;
 
   constructor(
@@ -64,10 +64,8 @@ export class IslandController {
     return Boolean(this.window);
   }
 
-  show() {
+  show(geometry: ScreenGeometry) {
     if (this.window) return;
-    const geometry = notchScreen();
-    if (!geometry) return;
     this.hasNotch = geometry.notchHeight > 0;
     const placement = place(geometry);
     this.placement = placement;
@@ -91,8 +89,14 @@ export class IslandController {
       if (this.window === window) this.teardown();
     });
     this.window = window;
-    const handle = window.ptr as number;
-    makeOverlay(handle);
+    let handle: number;
+    try {
+      handle = makeOverlay(window.ptr as number);
+      this.overlay = handle;
+    } catch (error) {
+      this.hide();
+      throw error;
+    }
     setFrame(handle, placement.cocoa.x, placement.cocoa.y, WINDOW_WIDTH, placement.windowHeight);
     setClickThrough(handle, true);
     orderFront(handle);
@@ -102,7 +106,7 @@ export class IslandController {
 
   hide() {
     const window = this.window;
-    this.teardown();
+    this.teardown(window?.ptr as number | undefined);
     window?.close();
   }
 
@@ -110,10 +114,12 @@ export class IslandController {
     this.setExpanded(false);
   }
 
-  private teardown() {
+  private teardown(restoreTo?: number) {
     if (this.poll) clearInterval(this.poll);
     this.poll = null;
     this.window = null;
+    if (this.overlay) closeOverlay(this.overlay, restoreTo);
+    this.overlay = null;
     this.expanded = false;
   }
 
@@ -136,20 +142,24 @@ export class IslandController {
   private setExpanded(expanded: boolean) {
     if (!this.window || this.expanded === expanded) return;
     this.expanded = expanded;
-    const handle = this.window.ptr as number;
+    const handle = this.overlay!;
     if (expanded) setClickThrough(handle, false);
     this.pushState();
     if (!expanded) setClickThrough(handle, true);
   }
 
-  private refreshGeometry() {
-    const geometry = notchScreen();
-    if (!geometry || !this.window) return;
+  /** Re-asserts the overlay after Space and full-screen transitions reorder windows. */
+  reassert() {
+    if (this.overlay) orderFront(this.overlay);
+  }
+
+  refreshGeometry(geometry: ScreenGeometry) {
+    if (!this.window) return;
     const next = place(geometry);
     if (next.key === this.placement?.key) return;
     this.hasNotch = geometry.notchHeight > 0;
     this.placement = next;
-    const handle = this.window.ptr as number;
+    const handle = this.overlay!;
     setFrame(handle, next.cocoa.x, next.cocoa.y, WINDOW_WIDTH, next.windowHeight);
     this.window.webview.loadURL(this.url(next));
   }
@@ -158,10 +168,6 @@ export class IslandController {
     const p = this.placement;
     if (!p || !this.window) return;
     const now = Date.now();
-    if (now - this.geometryCheck > 3000) {
-      this.geometryCheck = now;
-      this.refreshGeometry();
-    }
     const cursor = Screen.getCursorScreenPoint();
     const dx = Math.abs(cursor.x - p.centerX);
     const dy = cursor.y - p.top;
@@ -191,4 +197,34 @@ export class IslandController {
       this.setExpanded(false);
     }
   }
+}
+
+/** A single overlay on the primary display, shared across applications and Spaces. */
+export class IslandController {
+  private display: ScreenIslandController;
+  private poll: ReturnType<typeof setInterval> | null = null;
+  constructor(origin: string, onCommand: (url: string) => void) {
+    this.display = new ScreenIslandController(origin, onCommand);
+  }
+  get notch() { return this.display.notch; }
+  get active() { return this.display.active; }
+  show() {
+    if (this.poll) return;
+    this.sync();
+    this.poll = setInterval(() => this.sync(), 3000);
+  }
+  private sync() {
+    const geometry = screenGeometries()[0];
+    if (!geometry) { this.display.hide(); return; }
+    if (this.display.active) {
+      this.display.refreshGeometry(geometry);
+      this.display.reassert();
+    } else this.display.show(geometry);
+  }
+  hide() {
+    if (this.poll) clearInterval(this.poll);
+    this.poll = null;
+    this.display.hide();
+  }
+  collapse() { this.display.collapse(); }
 }

@@ -1,3 +1,4 @@
+import { configureOverlay, NONACTIVATING_PANEL } from "./overlay-policy";
 import { dlopen, ptr } from "bun:ffi";
 
 /**
@@ -19,6 +20,7 @@ function load() {
     runtime,
     send: dlopen(LIBOBJC, { objc_msgSend: { args: ["ptr", "ptr"], returns: "ptr" } }).symbols.objc_msgSend,
     sendPtr: dlopen(LIBOBJC, { objc_msgSend: { args: ["ptr", "ptr", "ptr"], returns: "ptr" } }).symbols.objc_msgSend,
+    sendU64: dlopen(LIBOBJC, { objc_msgSend: { args: ["ptr", "ptr"], returns: "u64" } }).symbols.objc_msgSend,
     sendIndex: dlopen(LIBOBJC, { objc_msgSend: { args: ["ptr", "ptr", "u64"], returns: "ptr" } }).symbols.objc_msgSend,
     sendPtrIndex: dlopen(LIBOBJC, { objc_msgSend: { args: ["ptr", "ptr", "ptr", "i64"], returns: "void" } }).symbols.objc_msgSend,
     sendMain: dlopen(LIBOBJC, { objc_msgSend: { args: ["ptr", "ptr", "ptr", "ptr", "bool"], returns: "void" } }).symbols.objc_msgSend,
@@ -58,7 +60,7 @@ export const arg = {
  * Sends `selector` to `target` via NSInvocation. `returnDoubles` reads a struct of that many
  * doubles (NSRect = 4, NSPoint = 2, NSEdgeInsets = 4).
  */
-export function invoke(target: number, selector: string, args: Arg[] = [], returnDoubles = 0, mainThread = true): Float64Array | null {
+export function invoke(target: number, selector: string, args: Arg[] = [], returnDoubles = 0, mainThread = true, retainResult = false): Float64Array | null {
   if (!target) return null;
   const pool = objc().runtime.objc_autoreleasePoolPush();
   try {
@@ -77,6 +79,12 @@ export function invoke(target: number, selector: string, args: Arg[] = [], retur
     if (!returnDoubles) return null;
     const out = new Float64Array(returnDoubles);
     objc().sendPtrIndex(invocation, sel("getReturnValue:"), ptr(out), 0);
+    if (retainResult) {
+      // Tagged Objective-C objects use the high bits; converting them to Number corrupts them.
+      // They are immortal values and do not need retain/release. Heap pointers fit exactly.
+      const object = new BigUint64Array(out.buffer)[0];
+      if (object && object <= BigInt(Number.MAX_SAFE_INTEGER)) objc().send(Number(object), sel("retain"));
+    }
     return out;
   } finally {
     objc().runtime.objc_autoreleasePoolPop(pool);
@@ -96,15 +104,15 @@ export interface ScreenGeometry {
   primaryHeight: number;
 }
 
-/** The screen with a camera housing if there is one, otherwise the primary (menu bar) screen. */
-export function notchScreen(): ScreenGeometry | null {
+/** Every attached display in AppKit order, with a common primary-screen coordinate origin. */
+export function screenGeometries(): ScreenGeometry[] {
   const pool = objc().runtime.objc_autoreleasePoolPush();
   try {
     const screens = objc().send(cls("NSScreen"), sel("screens")) as number;
-    if (!screens) return null;
+    if (!screens) return [];
     const count = Number(objc().send(screens, sel("count")) ?? 0);
     let primaryHeight = 0;
-    let chosen: ScreenGeometry | null = null;
+    const geometries: ScreenGeometry[] = [];
     for (let i = 0; i < count; i++) {
       const screen = objc().sendIndex(screens, sel("objectAtIndex:"), i) as number;
       const frame = invoke(screen, "frame", [], 4);
@@ -129,30 +137,70 @@ export function notchScreen(): ScreenGeometry | null {
         menuBarHeight: Math.max(0, frame[1] + frame[3] - (visible[1] + visible[3])),
         primaryHeight,
       };
-      if (i === 0) chosen = geometry;
-      if (notchHeight > 0) {
-        chosen = geometry;
-        break;
-      }
+      geometries.push(geometry);
     }
-    if (chosen) chosen.primaryHeight = primaryHeight;
-    return chosen;
+    return geometries.map((geometry) => ({ ...geometry, primaryHeight }));
   } finally {
     objc().runtime.objc_autoreleasePoolPop(pool);
   }
 }
 
-// NSWindowCollectionBehavior: canJoinAllSpaces | stationary | ignoresCycle | fullScreenAuxiliary
-const OVERLAY_BEHAVIOR = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
-// Above the menu bar (NSMainMenuWindowLevel = 24), below menus and popups.
-const OVERLAY_LEVEL = 25;
+/** Return an Objective-C pointer without interpreting its bits as a floating-point value. */
+function invokePointer(target: number, selector: string, args: Arg[] = [], retainResult = false): number {
+  const result = invoke(target, selector, args, 1, true, retainResult);
+  return result ? Number(new BigUint64Array(result.buffer)[0]) : 0;
+}
 
-export function makeOverlay(window: number) {
-  invoke(window, "setLevel:", [arg.int(OVERLAY_LEVEL)]);
-  invoke(window, "setCollectionBehavior:", [arg.uint(OVERLAY_BEHAVIOR)]);
-  invoke(window, "setHasShadow:", [arg.bool(false)]);
-  invoke(window, "setOpaque:", [arg.bool(false)]);
-  invoke(window, "setMovable:", [arg.bool(false)]);
+/**
+ * Create a real non-activating panel on AppKit's main thread. Electrobun's observed NSWindow
+ * remains the webview's lifecycle owner, hidden, while the panel owns its content view.
+ * Never re-class an existing window: KVO subclasses and WindowServer activation tags make that
+ * unsafe and prevent a regular window from reliably joining another app's full-screen Space.
+ */
+export function makeOverlay(window: number): number {
+  const frame = invoke(window, "frame", [], 4);
+  if (!frame) throw new Error("Could not read the island window frame.");
+  const allocated = invokePointer(cls("NSPanel"), "alloc");
+  const panel = invokePointer(allocated, "initWithContentRect:styleMask:backing:defer:", [
+    arg.rect(frame[0], frame[1], frame[2], frame[3]), arg.uint(NONACTIVATING_PANEL), arg.uint(2), arg.bool(false),
+  ]);
+  if (!panel) throw new Error("Could not create the island panel.");
+  invoke(panel, "setReleasedWhenClosed:", [arg.bool(false)]);
+  invoke(panel, "setFloatingPanel:", [arg.bool(true)]);
+  invoke(panel, "setBecomesKeyOnlyIfNeeded:", [arg.bool(true)]);
+  configureOverlay((selector, value) => {
+    invoke(panel, selector, [typeof value === "boolean" ? arg.bool(value) : arg.int(value)]);
+  });
+  const colorResult = invoke(cls("NSColor"), "clearColor", [], 1, true, true)!;
+  const clear = new BigUint64Array(colorResult.buffer)[0];
+  invoke(panel, "setBackgroundColor:", [arg.uint(clear)]);
+  if (clear <= BigInt(Number.MAX_SAFE_INTEGER)) invoke(Number(clear), "release");
+  const content = invokePointer(window, "contentView");
+  if (!content) {
+    closeOverlay(panel);
+    throw new Error("The island window has no content view.");
+  }
+  invoke(content, "retain");
+  invoke(window, "setContentView:", [arg.uint(0)]);
+  invoke(panel, "setContentView:", [arg.uint(content)]);
+  invoke(content, "release");
+  invoke(window, "orderOut:", [arg.uint(0)]);
+  return panel;
+}
+
+export function closeOverlay(panel: number, restoreTo?: number) {
+  // Return the webview to its lifecycle owner before Electrobun destroys that window.
+  if (restoreTo) {
+    const content = invokePointer(panel, "contentView");
+    if (content) {
+      invoke(content, "retain");
+      invoke(panel, "setContentView:", [arg.uint(0)]);
+      invoke(restoreTo, "setContentView:", [arg.uint(content)]);
+      invoke(content, "release");
+    }
+  }
+  invoke(panel, "close");
+  invoke(panel, "release");
 }
 
 export function setFrame(window: number, x: number, y: number, width: number, height: number) {

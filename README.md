@@ -9,7 +9,8 @@ A clearer view of your computer. Systo is a system monitor for macOS, Windows an
 - **Performance:** live CPU, memory, disk, and network charts.
 - **History:** find the biggest resource users over 1 hour, 3 hours, 1 day, 7 days, 30 days, or 90 days. History builds as Systo runs and is stored locally in SQLite.
 - **Startup:** manage login items, launch agents, and system daemons with reversible switches. System daemons require administrator authorization; registered helper discovery is an explicit action.
-- **Dynamic Island:** glance at CPU, RAM, and storage usage, plus separate download and upload speeds. Expand it to see top resource consumers.
+- **Dynamic Island:** glance at CPU, RAM, and storage usage, plus separate download and upload speeds. Expand it to see top resource consumers. A single macOS overlay stays on the primary display across applications and Spaces, including other apps in full screen. Switch to AI usage to see subscription limits and local token totals.
+- **AI usage:** track quota windows across accounts and providers, with local token totals and reported or estimated USD. Open AI usage with `Cmd+6`; see [account setup and usage sources](docs/ai-usage.md).
 - **Disk analyzer:** explore folders with sunburst and treemap views, find large files and cleanup candidates, reveal items in Finder, or move selected items to Trash with confirmation.
 - **Installer:** an offline macOS installer with the Core logo and a drag-or-click installation flow.
 

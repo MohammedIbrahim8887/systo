@@ -1,4 +1,5 @@
 "use client";
+import { Skeleton } from "@/components/ui/skeleton";
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRightIcon, CpuIcon, HardDriveIcon, MemoryStickIcon, WifiIcon, type LucideIcon } from "lucide-react";
@@ -10,6 +11,9 @@ import type { IslandData, Metric } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { AppIcon } from "./app-icon";
 import { Logo } from "./logo";
+import { IslandAI } from "./island-ai";
+import type { AIReport } from "@/lib/ai-types";
+import { tightestWindow } from "@/lib/ai-display";
 
 declare global {
   interface Window {
@@ -119,10 +123,13 @@ export function Island({ params = {} }: { params?: IslandParams }) {
   };
   const [expanded, setExpanded] = useState(false);
   const [metric, setMetric] = useState<Metric>("cpu");
+  const [showAI, setShowAI] = useState(false);
+  const [aiPollMs, setAiPollMs] = useState(1000);
   const [colorIcons, setColorIcons] = useState(false);
 
   useEffect(() => {
     try {
+      setShowAI(localStorage.getItem("systo:island-ai") === "true");
       const saved = localStorage.getItem(METRIC_KEY) as Metric | null;
       if (saved && METRICS.some((m) => m.id === saved)) setMetric(saved);
       const settings = JSON.parse(localStorage.getItem("systo:settings") ?? "{}") as { colorIcons?: boolean };
@@ -147,6 +154,15 @@ export function Island({ params = {} }: { params?: IslandParams }) {
 
   // Collapsed, the pill shows one number; a slower poll is plenty and lets the sampler idle down.
   const { data } = usePoll<IslandData>(`/api/island?metric=${metric}`, expanded ? 1000 : 3000, false, { whenHidden: true });
+
+  const { data: ai, error: aiError } = usePoll<AIReport>(showAI ? "/api/ai-usage?days=30" : null, aiPollMs, false, { whenHidden: true });
+  useEffect(() => { if (ai) setAiPollMs(ai.pending ? 1000 : 60000); }, [ai?.pending]);
+  const closest = ai ? tightestWindow(ai.accounts) : undefined;
+  const aiLabel = closest ? `${Math.round(100 - closest.window.usedPercent!)}%` : ai?.pending ? "…" : "—";
+  const toggleAI = (value: boolean) => {
+    setShowAI(value);
+    try { localStorage.setItem("systo:island-ai", String(value)); } catch { /* storage unavailable */ }
+  };
 
   // The panel only exists while open (plus its fade-out), so a collapsed island isn't re-rendering
   // and animating rings and bars nobody can see.
@@ -228,13 +244,14 @@ export function Island({ params = {} }: { params?: IslandParams }) {
           style={{ height: notchHeight, opacity: expanded ? 0 : 1, transitionDuration: expanded ? "120ms" : "260ms", transitionDelay: expanded ? "0ms" : "160ms" }}
         >
           <div className="flex min-w-0 items-center gap-1.5">
-            {top ? (
+            {showAI ? <span className="text-[11px] font-semibold text-white/85">AI</span> : top ? (
               <AppIcon bundlePath={top.bundlePath} hasIcon={top.hasIcon} kind={top.kind} size={15} color={colorIcons} className="rounded-[4px] bg-white/10 text-white/80" />
             ) : (
               <Logo className="size-[15px] text-white" />
             )}
           </div>
           <div className="flex items-center gap-1.5 text-[11.5px] font-medium tabular text-white/90">
+            {showAI ? <span title={closest ? `${closest.usage.account.label} · ${closest.window.label} remaining` : "AI limits"}>{aiLabel} left</span> : <>
             {data && (metric === "cpu" || metric === "memory") ? (
               <Ring value={data.overview[metric]} size={14} stroke={2.2} />
             ) : (
@@ -246,6 +263,7 @@ export function Island({ params = {} }: { params?: IslandParams }) {
                 <span>↑ {compactRate(data.totals.netOut)}/s</span>
               </span>
             ) : data ? totalLabel(data) : "–"}
+            </>}
           </div>
         </div>
 
@@ -267,11 +285,14 @@ export function Island({ params = {} }: { params?: IslandParams }) {
               <Logo className="size-3.5 text-white" />
               Systo
             </div>
-            <div className="text-[11px] tabular text-white/60">
-              {data ? `${METRIC_META[metric].label} ${totalLabel(data)}` : ""}
+            <div className="flex gap-1 rounded-full bg-white/10 p-0.5" aria-label="Island view">
+              {[false, true].map(value => <button key={String(value)} type="button" aria-pressed={showAI === value} onClick={() => toggleAI(value)} className={cn("rounded-full px-2 py-0.5 text-[10px] focus-visible:outline focus-visible:outline-white", showAI === value ? "bg-white text-black" : "text-white/75 hover:text-white")}>
+                {value ? "AI usage" : "System"}
+              </button>)}
             </div>
           </div>
 
+          {showAI ? <IslandAI report={ai} error={aiError} /> : <>
           <div className="mt-1.5 grid shrink-0 grid-cols-4 gap-1" role="tablist" aria-label="Top apps by">
             {METRICS.map(({ id }) => {
               const value = data?.overview[id] ?? 0;
@@ -319,15 +340,24 @@ export function Island({ params = {} }: { params?: IslandParams }) {
               </li>
             ))}
             {data && data.entries.length === 0 && <li className="pt-4 text-center text-[12px] text-white/50">Nothing busy right now</li>}
-            {!data && <li className="pt-4 text-center text-[12px] text-white/50">Sampling…</li>}
+            {!data && (
+              <li className="space-y-2 pt-4" role="status" aria-label="Sampling processes">
+                <Skeleton className="h-4 w-full bg-white/10" />
+                <Skeleton className="h-4 w-4/5 bg-white/10" />
+              </li>
+            )}
           </ol>
+          </>}
 
           <div className="flex shrink-0 items-center justify-between pt-1 text-[10.5px] text-white/40">
             <span className="tabular">
+              {showAI && (ai?.pending ? "Checking accounts…" : "Limits follow provider reset windows")}
+              {!showAI && <>
               {data && metric === "cpu" && `${cores} cores`}
               {data && metric === "memory" && `${formatBytes(data.totals.memoryUsed)} of ${formatBytes(data.totals.memoryTotal, 0)}`}
               {data && metric === "disk" && `R ${formatRate(data.totals.diskRead)} · W ${formatRate(data.totals.diskWrite)}`}
               {data && metric === "network" && `↓ ${formatRate(data.totals.netIn)} · ↑ ${formatRate(data.totals.netOut)}`}
+              </>}
             </span>
             <button
               type="button"

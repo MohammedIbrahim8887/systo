@@ -2,7 +2,7 @@
 
 import { OS, isModKey } from "@/lib/platform";
 import { useEffect, useState, type ReactNode } from "react";
-import { ActivityIcon, ArrowDownToLineIcon, HardDriveIcon, HistoryIcon, ListTreeIcon, PowerIcon, SettingsIcon, type LucideIcon } from "lucide-react";
+import { SparklesIcon, ActivityIcon, ArrowDownToLineIcon, HardDriveIcon, HistoryIcon, ListTreeIcon, PowerIcon, SettingsIcon, type LucideIcon } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Kbd } from "@/components/ui/kbd";
@@ -14,6 +14,7 @@ import type { Snapshot } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ActionsProvider } from "./actions";
 import { AreaChart } from "./chart";
+import { AIUsageView } from "./ai-usage-view";
 import { HistoryView } from "./history-view";
 import { Logo } from "./logo";
 import { PerformanceView } from "./performance-view";
@@ -22,9 +23,9 @@ import { SettingsDialog } from "./settings-dialog";
 import { DiskView } from "./disk-view";
 import { StartupView } from "./startup-view";
 
-type View = "processes" | "performance" | "history" | "startup" | "disk";
+type View = "processes" | "performance" | "history" | "startup" | "disk" | "ai";
 
-const SHORTCUTS: Record<string, View> = { "1": "processes", "2": "performance", "3": "history", "4": "startup", "5": "disk" };
+const SHORTCUTS: Record<string, View> = { "1": "processes", "2": "performance", "3": "history", "4": "startup", "5": "disk", "6": "ai" };
 
 function NavItem({
   icon: Icon,
@@ -143,6 +144,7 @@ function Shell() {
             <NavItem icon={HistoryIcon} label="History" active={view === "history"} onClick={() => setView("history")} shortcut={`${OS.mod}3`} />
             <NavItem icon={PowerIcon} label="Startup" active={view === "startup"} onClick={() => setView("startup")} shortcut={`${OS.mod}4`} />
             <NavItem icon={HardDriveIcon} label="Disk" active={view === "disk"} onClick={() => setView("disk")} shortcut={`${OS.mod}5`} />
+            <NavItem icon={SparklesIcon} label="AI usage" active={view === "ai"} onClick={() => setView("ai")} shortcut={`${OS.mod}6`} />
           </nav>
 
           <div className="mt-auto space-y-3 px-4 pb-3">
@@ -166,6 +168,7 @@ function Shell() {
           {view === "history" && <HistoryView />}
           {view === "startup" && <StartupView />}
           {view === "disk" && <DiskView />}
+          {view === "ai" && <AIUsageView />}
         </main>
       </div>
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />

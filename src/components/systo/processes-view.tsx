@@ -1,4 +1,5 @@
 "use client";
+import { Skeleton } from "@/components/ui/skeleton";
 
 import { IS_LINUX, IS_WINDOWS, OS, isModKey } from "@/lib/platform";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
@@ -747,16 +748,16 @@ function RowMenu({ target }: { target: Target }) {
 
 function LoadingRows() {
   return (
-    <div className="space-y-px">
+    <div className="space-y-px" role="status" aria-label="Loading processes">
       {Array.from({ length: 14 }, (_, i) => (
         <div key={i} className={cn(GRID, "h-9 items-center border-b border-border/50")}>
           <div className="flex items-center gap-2 pl-9">
-            <div className="size-[18px] animate-pulse rounded bg-muted" />
-            <div className="h-3 animate-pulse rounded bg-muted" style={{ width: `${40 + ((i * 37) % 45)}%` }} />
+            <Skeleton className="size-[18px]" />
+            <Skeleton className="h-3" style={{ width: `${40 + ((i * 37) % 45)}%` }} />
           </div>
           {Array.from({ length: 5 }, (_, j) => (
             <div key={j} className="flex justify-end px-3">
-              <div className="h-3 w-10 animate-pulse rounded bg-muted" />
+              <Skeleton className="h-3 w-10" />
             </div>
           ))}
         </div>
