@@ -1,3 +1,5 @@
+import type { ShellCommand } from "./lib/client/shell";
+import { FloatingPosition, type IslandPosition } from "./shell/floating-position";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { defineDesktop } from "@farm.js/core/desktop";
@@ -27,11 +29,13 @@ interface Island {
   show(): void;
   hide(): void;
   collapse(): void;
+  drag?(dx: number, dy: number, done: boolean): void;
 }
 
 const NO_ISLAND: Island = { active: false, notch: false, show() {}, hide() {}, collapse() {} };
 
 interface ShellPrefs {
+  islandPosition?: IslandPosition;
   island: boolean;
 }
 
@@ -71,10 +75,8 @@ function trayIconPath() {
   return file;
 }
 
-type Command = { type: "island"; enabled: boolean } | { type: "open-main" } | { type: "collapse-island" };
-
 /** Commands arrive as `#systo=<json>&n=<nonce>` same-document navigations (see lib/client/shell.ts). */
-function parseCommand(url: string, seen: Set<string>): Command | null {
+function parseCommand(url: string, seen: Set<string>): ShellCommand | null {
   const hash = url.split("#")[1];
   if (!hash?.startsWith("systo=")) return null;
   const params = new URLSearchParams(hash);
@@ -83,7 +85,7 @@ function parseCommand(url: string, seen: Set<string>): Command | null {
   seen.add(nonce);
   if (seen.size > 64) seen.delete(seen.values().next().value as string);
   try {
-    return JSON.parse(params.get("systo") ?? "") as Command;
+    return JSON.parse(params.get("systo") ?? "") as ShellCommand;
   } catch {
     return null;
   }
@@ -107,7 +109,11 @@ export default defineDesktop<BrowserWindow>({
     const handle = (url: string) => {
       const command = parseCommand(url, seen);
       if (!command) return;
-      if (command.type === "island") setIsland(command.enabled);
+      if (command.type === "drag-island") {
+        if (Number.isFinite(command.dx) && Number.isFinite(command.dy) && typeof command.done === "boolean") {
+          island.drag?.(command.dx, command.dy, command.done);
+        }
+      } else if (command.type === "island") setIsland(command.enabled);
       else if (command.type === "open-main") {
         island.collapse();
         openMain();
@@ -129,12 +135,16 @@ export default defineDesktop<BrowserWindow>({
       install: () => updater.install(),
     };
 
+    const position = new FloatingPosition(prefs.islandPosition, (value) => {
+      prefs.islandPosition = value;
+      savePrefs(prefs);
+    });
     const island: Island = IS_WINDOWS
-      ? new WinIslandController(server.origin, handle)
+      ? new WinIslandController(server.origin, handle, position)
       : IS_MAC
         ? new IslandController(server.origin, handle)
         : ISLAND_SUPPORTED
-          ? new LinuxIslandController(server.origin, handle)
+          ? new LinuxIslandController(server.origin, handle, position)
           : NO_ISLAND;
 
     // The server runs in this process. Pages also POST commands to /api/shell, which hands them over

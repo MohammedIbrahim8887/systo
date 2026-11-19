@@ -116,7 +116,7 @@ export function cursor(): { x: number; y: number } | null {
   return { x: point[0], y: point[1] };
 }
 
-/** The primary monitor's full bounds, where the island sits. */
+/** The primary monitor's work area, where the island sits. */
 export function primaryMonitor(): Rect | null {
   const { user32 } = win();
   const monitor = user32.MonitorFromPoint(0n, MONITOR_DEFAULTTOPRIMARY) as number | null;
@@ -124,7 +124,7 @@ export function primaryMonitor(): Rect | null {
   const info = new Int32Array(10);
   info[0] = 40;
   if (!user32.GetMonitorInfoW(monitor, ptr(info))) return null;
-  return { left: info[1], top: info[2], right: info[3], bottom: info[4] };
+  return { left: info[5], top: info[6], right: info[7], bottom: info[8] };
 }
 
 /** True while a fullscreen game, video or presentation owns the screen. */

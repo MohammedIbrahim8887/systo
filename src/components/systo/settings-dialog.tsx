@@ -1,6 +1,6 @@
 "use client";
 
-import { OS, IS_WINDOWS, byOS } from "@/lib/platform";
+import { OS, IS_WINDOWS, IS_LINUX, byOS } from "@/lib/platform";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useTheme } from "@farm.js/core/theme/client";
@@ -219,11 +219,9 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
                   ? "Needs a compositor that can float it above your windows. Hyprland is supported today."
                   : shell.notch
                   ? "Hover the notch to see your top 3 apps."
-                  : byOS(
-                      "No notch on this display; the island sits at the top of the menu bar.",
-                      "A floating pill at the top center of your main display. It hides while something is fullscreen.",
-                      "A floating pill under the bar at the top center of your display. It hides while something is fullscreen.",
-                    )
+                  : IS_WINDOWS || IS_LINUX
+                  ? "Hover the pill, then drag its header to move it. It hides while something is fullscreen."
+                  : "No notch on this display; the island sits at the top of the menu bar."
                 : "Available in the desktop app."
             }
           >

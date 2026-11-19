@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRightIcon, CpuIcon, HardDriveIcon, MemoryStickIcon, WifiIcon, type LucideIcon } from "lucide-react";
 import { usePoll } from "@/lib/client/use-poll";
+import { createIslandDragHandlers } from "@/lib/client/island-drag";
 import { sendShellCommand } from "@/lib/client/shell";
 import { formatBytes, formatRate } from "@/lib/format";
 import { METRIC_META } from "@/lib/kinds";
@@ -121,6 +122,9 @@ export function Island({ params = {} }: { params?: IslandParams }) {
     /** Windows: a floating pill below the top edge instead of one hanging from a notch. */
     floating: params.fl !== undefined,
   };
+  const movable = geometry.desktop && geometry.floating;
+  const dragEvents = useMemo(() => movable ? createIslandDragHandlers() : {}, [movable]);
+  const grip = movable ? { "data-island-grip": true, title: "Drag to move the island" } : {};
   const [expanded, setExpanded] = useState(false);
   const [metric, setMetric] = useState<Metric>("cpu");
   const [showAI, setShowAI] = useState(false);
@@ -200,6 +204,7 @@ export function Island({ params = {} }: { params?: IslandParams }) {
       <style>{`html,body{background:transparent!important;color-scheme:dark}`}</style>
       <div
         className="pointer-events-auto relative text-white"
+        {...dragEvents}
         onMouseEnter={() => !geometry.desktop && setExpanded(true)}
         onMouseLeave={() => !geometry.desktop && setExpanded(false)}
         style={{
@@ -240,7 +245,8 @@ export function Island({ params = {} }: { params?: IslandParams }) {
 
         {/* Collapsed: one wing either side of the notch. */}
         <div
-          className="absolute inset-x-0 top-0 flex items-center justify-between px-3.5 transition-opacity"
+          {...grip}
+          className={cn("absolute inset-x-0 top-0 flex items-center justify-between px-3.5 transition-opacity", movable && "cursor-grab touch-none active:cursor-grabbing")}
           style={{ height: notchHeight, opacity: expanded ? 0 : 1, transitionDuration: expanded ? "120ms" : "260ms", transitionDelay: expanded ? "0ms" : "160ms" }}
         >
           <div className="flex min-w-0 items-center gap-1.5">
@@ -280,7 +286,7 @@ export function Island({ params = {} }: { params?: IslandParams }) {
             pointerEvents: shown ? "auto" : "none",
           }}
         >
-          <div className="flex shrink-0 items-center justify-between" style={{ height: notchHeight }}>
+          <div {...grip} className={cn("flex shrink-0 items-center justify-between", movable && "cursor-grab touch-none active:cursor-grabbing")} style={{ height: notchHeight }}>
             <div className="flex items-center gap-1.5 text-[11px] font-medium text-white/60">
               <Logo className="size-3.5 text-white" />
               Systo
