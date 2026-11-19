@@ -22,6 +22,7 @@ declare global {
 }
 
 export type ShellCommand =
+  | { type: "drag-island"; dx: number; dy: number; done: boolean }
   | { type: "island"; enabled: boolean }
   | { type: "island-metric"; metric: Metric }
   | { type: "open-main" }
@@ -38,11 +39,16 @@ export function sendShellCommand(command: ShellCommand) {
   location.hash = `systo=${payload}&n=${nonce}`;
   setTimeout(() => history.replaceState(history.state, "", base), 60);
   // Same command over HTTP; the shell ignores whichever copy arrives second.
-  void fetch("/api/shell", {
+  void postShellCommand(command, nonce).catch(() => {});
+}
+
+export async function postShellCommand(command: ShellCommand, nonce: string) {
+  const response = await fetch("/api/shell", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ command, nonce }),
-  }).catch(() => {});
+  });
+  if (!response.ok) throw new Error(`Shell command failed (HTTP ${response.status})`);
 }
 
 export function useShellState(): ShellState | null {

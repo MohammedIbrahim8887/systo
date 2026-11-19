@@ -1,9 +1,10 @@
+import { FloatingPosition } from "./floating-position";
 import { BrowserWindow } from "electrobun/main";
 import { findWindow, setClickThrough } from "./x11";
 import { clients, cursor, monitors, moveWindow, overlayRule, raiseWindow, setProp, workspaceFullscreen, xwaylandUnscaled, type HyprMonitor } from "../lib/server/linux/hyprland";
 
 /**
- * The Linux Dynamic Island, for Hyprland: a black pill floating under the bar at the top center
+ * The Linux Dynamic Island, for Hyprland: a movable pill in the work area
  * of the focused display. Like the macOS island, the window is always the size of the open
  * panel and transparent around the pill; it ignores the pointer until the cursor rests on the
  * pill, then takes clicks while the panel is open. It hides while something is fullscreen.
@@ -46,9 +47,15 @@ interface Placement {
 }
 
 /** The display the island lives on: the focused one, in layout coordinates below its bar. */
-function anchor(monitor: HyprMonitor) {
-  const width = monitor.width / monitor.scale;
-  return { centerX: monitor.x + width / 2, top: monitor.y + (monitor.reserved?.[1] ?? 0) };
+function workArea(monitor: HyprMonitor) {
+  const [left, top, right, bottom] = monitor.reserved ?? [0, 0, 0, 0];
+  const rotated = (monitor.transform ?? 0) % 2 === 1;
+  return {
+    left: monitor.x + left,
+    top: monitor.y + top,
+    right: monitor.x + (rotated ? monitor.height : monitor.width) / monitor.scale - right,
+    bottom: monitor.y + (rotated ? monitor.width : monitor.height) / monitor.scale - bottom,
+  };
 }
 
 export class LinuxIslandController {
@@ -58,6 +65,7 @@ export class LinuxIslandController {
   /** The same window's X id, or null if it isn't an X11 window. */
   private xid: bigint | null = null;
   private placement: Placement | null = null;
+  private area: ReturnType<typeof workArea> | null = null;
   private monitor: string | null = null;
   private shown = false;
   private expanded = false;
@@ -70,6 +78,7 @@ export class LinuxIslandController {
   constructor(
     private origin: string,
     private onCommand: (url: string) => void,
+    private position = new FloatingPosition(),
   ) {}
 
   /** No notch on a PC; the page uses this to word the setting. */
@@ -100,6 +109,15 @@ export class LinuxIslandController {
     void this.setExpanded(false);
   }
 
+  drag(dx: number, dy: number, done: boolean) {
+    const p = this.placement;
+    if (!this.area || !p || this.hidden) return;
+    this.position.layout(this.area, p.width, p.height, dx * p.ratio, dy * p.ratio);
+    this.position.dragging = !done;
+    this.leaveSince = 0;
+    if (done) this.position.finish();
+  }
+
   private async open() {
     const [all, unscaled] = await Promise.all([monitors(), xwaylandUnscaled()]);
     const monitor = all.find((m) => m.focused) ?? all[0];
@@ -108,8 +126,8 @@ export class LinuxIslandController {
     this.monitor = monitor.name;
     // The page is an XWayland window, drawn in device pixels when the compositor doesn't scale it.
     const guess = unscaled ? 1 / monitor.scale : 1;
-    const { centerX, top } = anchor(monitor);
-    await overlayRule(RULE, TITLE, centerX - (PANEL_WIDTH * guess) / 2, top);
+    const { x, y } = this.position.layout(workArea(monitor), PANEL_WIDTH * guess, WINDOW_HEIGHT * guess);
+    await overlayRule(RULE, TITLE, x, y);
     if (!this.shown) return;
 
     const params = new URLSearchParams({ shell: "1", fl: "1", nw: "0", nh: String(PILL_HEIGHT), w: String(PANEL_WIDTH) });
@@ -154,6 +172,7 @@ export class LinuxIslandController {
     this.xid = null;
     this.placement = null;
     this.shown = false;
+    this.position.dragging = false;
     this.expanded = false;
     this.hidden = false;
   }
@@ -178,7 +197,7 @@ export class LinuxIslandController {
     if (this.address) await setProp(this.address, "no_focus", !interactive);
   }
 
-  /** Finds the window, then keeps it centered under the bar of its display, above other floating windows. */
+  /** Finds the window, then keeps it at its saved position, above other floating windows. */
   private async layout(): Promise<boolean> {
     const [all, list] = await Promise.all([monitors(), clients()]);
     const monitor = all.find((m) => m.name === this.monitor) ?? all.find((m) => m.focused) ?? all[0];
@@ -191,17 +210,20 @@ export class LinuxIslandController {
       await this.setInteractive(this.expanded);
     }
     const [width, height] = client.size;
-    const { centerX, top } = anchor(monitor);
-    const x = Math.round(centerX - width / 2);
+    this.area = workArea(monitor);
     const busy = await workspaceFullscreen(monitor.activeWorkspace.id);
     if (busy !== this.hidden) {
       this.hidden = busy;
-      if (busy) await this.setExpanded(false);
+      if (busy) {
+        this.position.dragging = false;
+        await this.setExpanded(false);
+      }
     }
-    const target = this.hidden ? { x: OFFSCREEN, y: OFFSCREEN } : { x, y: top };
+    const { x, y } = this.position.layout(this.area, width, height);
+    const target = this.hidden ? { x: OFFSCREEN, y: OFFSCREEN } : { x, y };
     if (client.at[0] !== target.x || client.at[1] !== target.y) await moveWindow(client.address, target.x, target.y);
     if (!this.hidden) await raiseWindow(client.address);
-    this.placement = { x, y: top, width, height, ratio: width / PANEL_WIDTH };
+    this.placement = { x, y, width, height, ratio: width / PANEL_WIDTH };
     return true;
   }
 
@@ -214,6 +236,13 @@ export class LinuxIslandController {
     }
     const p = this.placement;
     if (!p || this.hidden) return FAR_POLL_MS;
+    if (this.area && this.address) {
+      const target = this.position.layout(this.area, p.width, p.height);
+      if (target.x !== p.x || target.y !== p.y) {
+        if (await moveWindow(this.address, target.x, target.y)) Object.assign(p, target);
+      }
+    }
+    if (this.position.dragging) return POLL_MS;
     const point = await cursor();
     if (!point) return FAR_POLL_MS;
     const dx = Math.abs(point.x - (p.x + p.width / 2));

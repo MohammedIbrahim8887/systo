@@ -1,8 +1,9 @@
+import { FloatingPosition } from "./floating-position";
 import { BrowserWindow } from "electrobun/main";
 import { cursor, fullscreenBusy, makeOverlay, place, primaryMonitor, resolveHwnd, scaleFor, setVisible, windowRect } from "./win32";
 
 /**
- * The Windows Dynamic Island: a black pill floating at the top center of the primary display.
+ * The Windows Dynamic Island: a movable pill on the primary display.
  * Collapsed, the window is exactly the pill, so nothing invisible blocks clicks around it; on
  * hover it grows to the panel and the page animates into it. It hides while something is
  * fullscreen and never takes keyboard focus.
@@ -35,6 +36,7 @@ export class WinIslandController {
   constructor(
     private origin: string,
     private onCommand: (url: string) => void,
+    private position = new FloatingPosition(),
   ) {}
 
   /** Windows has no notch; the page uses this to word the setting. */
@@ -82,6 +84,14 @@ export class WinIslandController {
     this.setExpanded(false);
   }
 
+  drag(dx: number, dy: number, done: boolean) {
+    if (!this.hwnd || this.hidden) return;
+    this.position.dragging = !done;
+    this.layout(false, dx, dy);
+    this.leaveSince = 0;
+    if (done) this.position.finish();
+  }
+
   private teardown() {
     if (this.poll) clearInterval(this.poll);
     if (this.shrinkTimer) clearTimeout(this.shrinkTimer);
@@ -91,6 +101,8 @@ export class WinIslandController {
     this.hwnd = null;
     this.expanded = false;
     this.monitorKey = "";
+    this.position.dragging = false;
+    this.hidden = false;
   }
 
   /** The HWND appears a moment after the window is created; style it once it does. */
@@ -105,16 +117,18 @@ export class WinIslandController {
     return hwnd;
   }
 
-  /** Sizes and centers the window on the primary display for the current state. */
-  private layout(frameChanged = false) {
+  /** Keeps the pill and panel centered on the same saved position. */
+  private layout(frameChanged = false, dx = 0, dy = 0) {
     const hwnd = this.hwnd;
     const monitor = primaryMonitor();
     if (!hwnd || !monitor) return;
     const scale = scaleFor(hwnd);
     const width = (this.expanded ? PANEL_WIDTH : PILL_WIDTH) * scale;
     const height = (this.expanded ? FLOAT_TOP + PILL_HEIGHT + PANEL_EXTRA_HEIGHT + 36 : FLOAT_TOP + PILL_HEIGHT) * scale;
-    const centerX = (monitor.left + monitor.right) / 2;
-    place(hwnd, centerX - width / 2, monitor.top, width, height, frameChanged);
+    const panelWidth = PANEL_WIDTH * scale;
+    const target = this.position.layout(monitor, panelWidth, (FLOAT_TOP + PILL_HEIGHT + PANEL_EXTRA_HEIGHT + 36) * scale, dx * scale, dy * scale);
+    const centerX = target.x + panelWidth / 2;
+    place(hwnd, centerX - width / 2, target.y, width, height, frameChanged);
     this.monitorKey = `${monitor.left},${monitor.top},${monitor.right},${monitor.bottom},${scale}`;
   }
 
@@ -137,7 +151,7 @@ export class WinIslandController {
       this.pushState();
       this.shrinkTimer = setTimeout(() => {
         this.shrinkTimer = null;
-        if (!this.expanded) this.layout();
+        if (!this.expanded && !this.hidden) this.layout();
       }, COLLAPSE_ANIMATION_MS);
     }
   }
@@ -151,7 +165,10 @@ export class WinIslandController {
       const busy = fullscreenBusy();
       if (busy !== this.hidden) {
         this.hidden = busy;
-        if (busy) this.setExpanded(false);
+        if (busy) {
+          this.position.dragging = false;
+          this.setExpanded(false);
+        }
         setVisible(hwnd, !busy);
         if (!busy) this.layout();
       }
@@ -159,7 +176,7 @@ export class WinIslandController {
       const key = monitor ? `${monitor.left},${monitor.top},${monitor.right},${monitor.bottom},${scaleFor(hwnd)}` : "";
       if (!this.hidden && key && key !== this.monitorKey) this.layout();
     }
-    if (this.hidden) return;
+    if (this.hidden || this.position.dragging) return;
     const point = cursor();
     const rect = windowRect(hwnd);
     if (!point || !rect) return;

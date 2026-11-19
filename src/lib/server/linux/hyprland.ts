@@ -21,6 +21,7 @@ export interface HyprMonitor {
   width: number;
   height: number;
   scale: number;
+  transform?: number;
   /** Space taken by bars: left, top, right, bottom. */
   reserved: [number, number, number, number];
   focused: boolean;
