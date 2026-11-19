@@ -1,6 +1,6 @@
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import type { AIAccount, AIDiscoveredLogin, AIProvider } from "../../ai-types";
 import { AI_NAMES } from "../../ai-types";
 import { expandPath } from "./accounts";
@@ -11,7 +11,11 @@ const list = (path: string) => readdir(path).catch(() => [] as string[]);
 
 /** `~/…` for display and storage, so saved settings stay portable across user names. */
 export function tildePath(path: string, home = homedir()) {
-  return path === home ? "~" : path.startsWith(`${home}/`) ? `~/${path.slice(home.length + 1)}` : path;
+  if (!isAbsolute(path)) return path;
+  const local = relative(home, path);
+  if (!local) return "~";
+  if (isAbsolute(local) || local === ".." || local.startsWith(`..${sep}`)) return path;
+  return `~/${local.split(sep).join("/")}`;
 }
 
 /** "codex_personal-b78eaba6a407" → "personal"; ".claude-work" → "work". */
@@ -137,7 +141,7 @@ export async function discoverLogins(accounts: AIAccount[], home = homedir()): P
     found.push({
       id: `${c.provider}:${tildePath(c.dir, home)}`,
       provider: c.provider,
-      label: c.isDefault ? `My ${AI_NAMES[c.provider]}` : folderLabel(c.provider, c.dir.endsWith("/.claude") ? dirname(c.dir) : c.dir),
+      label: c.isDefault ? `My ${AI_NAMES[c.provider]}` : folderLabel(c.provider, basename(c.dir) === ".claude" ? dirname(c.dir) : c.dir),
       folder: tildePath(c.dir, home),
       credentialPath: c.isDefault ? undefined : tildePath(c.credential, home),
       sessionsPath: c.isDefault ? undefined : (await exists(c.sessions)) ? tildePath(c.sessions, home) : undefined,
