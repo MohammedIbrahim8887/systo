@@ -3,6 +3,17 @@
 All notable changes to Systo. The release workflow publishes each version's section as its
 GitHub release notes, and the website's changelog page renders this file.
 
+## [0.1.8] - 2026-11-21
+
+### Added
+- **Multi-select cleanup in Disk.** Tick items in Contents, Largest files and the Cleanup tab, then move them all to the Trash (Recycle Bin on Windows) in one step. A confirmation lists every item and its size first.
+- **One-click cleanup.** "Select all safe" and a per-card "Clean up…" button on each safe-to-remove suggestion. Single-folder suggestions like app caches clear what's inside and keep the folder.
+- **Empty Trash** from the Trash suggestion on macOS and Linux.
+
+### Improved
+- Bulk moves use one Finder, gio or PowerShell call per batch instead of one per item, and report partial failures. Protected system and home folders are still refused.
+- The dependency and build folders list shows up to 120 folders instead of 40.
+
 ## [0.1.7] - 2026-11-17
 
 ### Added

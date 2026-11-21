@@ -12,9 +12,13 @@ export async function GET(request: Request) {
 }
 
 interface DiskRequest {
-  action?: "scan" | "cancel" | "trash" | "choose";
+  action?: "scan" | "cancel" | "trash" | "trash-many" | "empty-trash" | "choose";
   root?: "home" | "volume" | string;
   path?: string;
+  /** trash-many: items to move. */
+  paths?: unknown;
+  /** trash-many: folders whose contents to move, keeping the folder itself. */
+  contents?: unknown;
 }
 
 export async function POST(request: Request) {
@@ -32,6 +36,14 @@ export async function POST(request: Request) {
     case "trash":
       if (typeof body.path !== "string" || !isAbsolutePath(body.path)) return Response.json({ ok: false, message: "Bad path." }, { status: 400 });
       return Response.json(await analyzer.trash(slash(body.path)));
+    case "trash-many": {
+      const list = (v: unknown) => (Array.isArray(v) ? v : []);
+      const all = [...list(body.paths), ...list(body.contents)];
+      if (!all.length || !all.every((p) => typeof p === "string" && isAbsolutePath(p))) return Response.json({ ok: false, message: "Bad path." }, { status: 400 });
+      return Response.json(await analyzer.trashMany(list(body.paths).map(slash), list(body.contents).map(slash)));
+    }
+    case "empty-trash":
+      return Response.json(await analyzer.emptyTrash());
     case "choose": {
       try {
         const path = await analyzer.choose();

@@ -1,6 +1,6 @@
 import { appDataFile } from "./paths";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { cpus, homedir } from "node:os";
 import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
@@ -146,6 +146,127 @@ function prune(children: DiskNode[]): DiskNode[] {
   }
   if (restSize > 0) kept.push({ n: "", s: restSize, f: restFiles, k: 3 });
   return kept;
+}
+
+export interface TrashResult {
+  ok: boolean;
+  moved: number;
+  /** Bytes the moved items took up in the scan. */
+  freed: number;
+  failed: Array<{ path: string; message: string }>;
+  message: string;
+}
+
+/** Why Systo won't move this to the Trash, or null when it may. */
+function protectedReason(real: string): string | null {
+  const path = trimSlash(real) || "/";
+  if (IS_WIN) {
+    const drive = DATA_VOLUME;
+    const guarded = new Set(
+      [HOME, `${HOME}/Documents`, `${HOME}/Desktop`, `${HOME}/Downloads`, `${HOME}/AppData`, `${HOME}/AppData/Local`, `${HOME}/AppData/Roaming`, drive, `${drive}Windows`, `${drive}Program Files`, `${drive}Program Files (x86)`, `${drive}ProgramData`, `${drive}Users`].map((p) => trimSlash(p).toLowerCase()),
+    );
+    return guarded.has(path.toLowerCase()) || /^[a-z]:\/?$/i.test(real) ? "Systo won't move a top-level system or user folder to the Recycle Bin." : null;
+  }
+  const guarded = IS_LINUX
+    ? new Set([
+        HOME, join(HOME, "Documents"), join(HOME, "Desktop"), join(HOME, "Downloads"), join(HOME, ".config"), join(HOME, ".local"), join(HOME, ".local", "share"),
+        "/", "/usr", "/etc", "/var", "/home", "/opt", "/boot", "/bin", "/sbin", "/lib", "/lib64", "/root", "/srv", "/mnt", "/run", "/tmp",
+      ])
+    : new Set(
+        [HOME, join(HOME, "Library"), join(HOME, "Documents"), join(HOME, "Desktop"), join(HOME, "Downloads"), join(HOME, "Applications"), "/Applications", "/Library", "/System", "/Users", "/usr", "/bin", "/sbin", "/private", "/opt", "/Volumes", "/cores"].flatMap((p) => [p, DATA_VOLUME + p]),
+      );
+  return guarded.has(path) ? "Systo won't move a top-level system or home folder to the Trash." : null;
+}
+
+const chunks = <T>(items: T[], size: number) => Array.from({ length: Math.ceil(items.length / size) }, (_, i) => items.slice(i * size, (i + 1) * size));
+
+/** Moves existing paths to the Trash or Recycle Bin. Returns an error message for each one that didn't move. */
+async function moveToTrash(paths: string[]): Promise<Map<string, string>> {
+  const errors = new Map<string, string>();
+  if (IS_WIN) {
+    const script = `Add-Type -AssemblyName Microsoft.VisualBasic
+$paths = @(ConvertFrom-Json $env:SYSTO_PATHS)
+for ($i = 0; $i -lt $paths.Count; $i++) {
+  $p = $paths[$i]
+  try {
+    if (Test-Path -LiteralPath $p -PathType Container) { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, 'OnlyErrorDialogs', 'SendToRecycleBin') }
+    else { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, 'OnlyErrorDialogs', 'SendToRecycleBin') }
+  } catch { [Console]::Out.WriteLine("$i\`t" + $_.Exception.Message) }
+}`;
+    // Environment variables top out at 32K characters on Windows.
+    for (const batch of chunks(paths, 80)) {
+      const { code, stdout, stderr } = await powershell(script, { SYSTO_PATHS: JSON.stringify(batch.map((p) => p.replace(/\//g, "\\"))) }, 10 * 60_000);
+      for (const line of stdout.split(/\r?\n/)) {
+        const tab = line.indexOf("\t");
+        const index = Number(line.slice(0, tab));
+        if (tab > 0 && batch[index]) errors.set(batch[index], `Couldn't move it to the Recycle Bin: ${line.slice(tab + 1).trim()}`);
+      }
+      if (code !== 0) for (const p of batch) if (existsSync(p) && !errors.has(p)) errors.set(p, `Couldn't move it to the Recycle Bin: ${stderr.trim() || "Windows refused."}`);
+    }
+    return errors;
+  }
+  if (IS_LINUX) {
+    // gio picks the right trash for each item's drive but refuses items on another btrfs
+    // subvolume of the home disk (~/.cache often is one), so those go to the home trash by hand.
+    for (const batch of chunks(paths, 200)) {
+      const gio = await run("gio", ["trash", "--", ...batch], 10 * 60_000);
+      if (gio.code === 0) continue;
+      for (const p of batch) {
+        if (!existsSync(p)) continue;
+        const failure = await trashToHome(p);
+        if (failure) errors.set(p, `Couldn't move it to the Trash: ${failure}`);
+      }
+    }
+    return errors;
+  }
+  const script = `on run argv
+  set targets to {}
+  repeat with p in argv
+    set end of targets to (POSIX file (contents of p) as alias)
+  end repeat
+  tell application "Finder" to delete targets
+end run`;
+  for (const batch of chunks(paths, 200)) {
+    const finder = await run("/usr/bin/osascript", ["-e", script, ...batch], 10 * 60_000);
+    if (finder.code === 0) continue;
+    // Without Automation access to Finder, move what's left into the Trash directly (no "Put Back").
+    for (const p of batch) {
+      if (!existsSync(p)) continue;
+      try {
+        const name = basename(p);
+        let dest = join(HOME, ".Trash", name);
+        for (let i = 2; existsSync(dest); i++) dest = join(HOME, ".Trash", `${name} ${i}`);
+        renameSync(p, dest);
+      } catch (error) {
+        errors.set(p, `Couldn't move it to the Trash: ${(error as Error).message}`);
+      }
+    }
+  }
+  return errors;
+}
+
+/** The freedesktop Trash layout: the item under files/, and where it came from under info/. Returns an error, or null. */
+async function trashToHome(real: string): Promise<string | null> {
+  const trash = join(process.env.XDG_DATA_HOME || join(HOME, ".local", "share"), "Trash");
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const now = new Date();
+  const deleted = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  try {
+    mkdirSync(join(trash, "files"), { recursive: true });
+    mkdirSync(join(trash, "info"), { recursive: true });
+    let name = basename(real);
+    for (let i = 2; existsSync(join(trash, "files", name)) || existsSync(join(trash, "info", `${name}.trashinfo`)); i++) name = `${basename(real)}.${i}`;
+    const info = join(trash, "info", `${name}.trashinfo`);
+    // The record goes first, as the spec asks, so a half-moved item is never orphaned.
+    writeFileSync(info, `[Trash Info]\nPath=${real.split("/").map(encodeURIComponent).join("/")}\nDeletionDate=${deleted}\n`, { flag: "wx" });
+    // mv copies and deletes when the trash is on another filesystem, which rename can't do.
+    const { code, stderr } = await run("mv", ["--", real, join(trash, "files", name)], 10 * 60_000);
+    if (code === 0) return null;
+    rmSync(info, { force: true });
+    return stderr.trim().split("\n")[0] || "the move failed.";
+  } catch (error) {
+    return (error as Error).message;
+  }
 }
 
 class DiskAnalyzer {
@@ -521,7 +642,7 @@ class DiskAnalyzer {
       size: found.reduce((s, f) => s + f.size, 0),
       count: found.length,
       safe: true,
-      items: found.slice(0, 40),
+      items: found.slice(0, 120),
     });
     return results
       .filter((r) => r.size >= 32 * 1024 * 1024)
@@ -567,120 +688,117 @@ class DiskAnalyzer {
   // ── Actions ─────────────────────────────────────────────────────────────────────────────
 
   async trash(path: string): Promise<{ ok: boolean; message: string }> {
-    this.load();
-    if (!this.result) return { ok: false, message: "Scan a folder first." };
-    if (this.state.status === "scanning") return { ok: false, message: "Wait for the scan to finish." };
-    const located = this.locate(path);
-    if (!located || located.trail.length < 2) return { ok: false, message: "That item isn't part of the scan." };
-    const real = path;
-    if (IS_WIN) return this.recycle(real, located.trail);
-    if (IS_LINUX) return this.trashLinux(real, located.trail);
-    const protectedPaths = new Set(
-      [HOME, join(HOME, "Library"), join(HOME, "Documents"), join(HOME, "Desktop"), join(HOME, "Downloads"), join(HOME, "Applications"), "/Applications", "/Library", "/System", "/Users", "/usr", "/bin", "/sbin", "/private", "/opt", "/Volumes", "/cores"].flatMap(
-        (p) => [p, DATA_VOLUME + p],
-      ),
-    );
-    if (protectedPaths.has(real.replace(/\/+$/, ""))) return { ok: false, message: "Systo won't move a top-level system or home folder to the Trash." };
-    if (!existsSync(real)) {
-      this.forget(located.trail);
-      return { ok: true, message: "It was already gone." };
-    }
-    const script = `on run argv
-  tell application "Finder" to delete (POSIX file (item 1 of argv) as alias)
-end run`;
-    const finder = await run("/usr/bin/osascript", ["-e", script, real], 30000);
-    if (finder.code !== 0) {
-      // Without Automation access to Finder, move it into the Trash directly (no "Put Back").
-      try {
-        const name = basename(real);
-        let dest = join(HOME, ".Trash", name);
-        for (let i = 2; existsSync(dest); i++) dest = join(HOME, ".Trash", `${name} ${i}`);
-        renameSync(real, dest);
-      } catch (error) {
-        return { ok: false, message: `Couldn't move it to the Trash: ${(error as Error).message}` };
-      }
-    }
-    this.forget(located.trail);
-    return { ok: true, message: `Moved ${basename(real)} to the Trash.` };
+    const result = await this.trashMany([path]);
+    return { ok: result.ok, message: result.failed[0]?.message ?? result.message };
   }
 
   /**
-   * Moves it to the freedesktop Trash, where the file manager can restore it. gio picks the right
-   * trash for the item's drive but refuses items on another btrfs subvolume of the home disk
-   * (~/.cache often is one), so those go to the home trash by hand.
+   * Moves every item in `paths`, and everything inside each folder in `contents`, to the Trash in
+   * as few system calls as possible. An item inside another selected item goes with its parent.
    */
-  private async trashLinux(real: string, trail: DiskNode[]): Promise<{ ok: boolean; message: string }> {
-    const protectedPaths = new Set([
-      HOME, join(HOME, "Documents"), join(HOME, "Desktop"), join(HOME, "Downloads"), join(HOME, ".config"), join(HOME, ".local"), join(HOME, ".local", "share"),
-      "/", "/usr", "/etc", "/var", "/home", "/opt", "/boot", "/bin", "/sbin", "/lib", "/lib64", "/root", "/srv", "/mnt", "/run", "/tmp",
-    ]);
-    if (protectedPaths.has(trimSlash(real) || "/")) return { ok: false, message: "Systo won't move a top-level system or home folder to the Trash." };
-    if (!existsSync(real)) {
-      this.forget(trail);
-      return { ok: true, message: "It was already gone." };
+  async trashMany(paths: string[], contents: string[] = []): Promise<TrashResult> {
+    const fail = (message: string): TrashResult => ({ ok: false, moved: 0, freed: 0, failed: [], message });
+    this.load();
+    if (!this.result) return fail("Scan a folder first.");
+    if (this.state.status === "scanning") return fail("Wait for the scan to finish.");
+    const failed: TrashResult["failed"] = [];
+    const wanted = new Set(paths.map(trimSlash));
+    for (const folder of contents) {
+      const located = this.locate(trimSlash(folder));
+      if (!located) {
+        failed.push({ path: folder, message: "That folder isn't part of the scan." });
+        continue;
+      }
+      for (const c of located.node.c ?? []) if (c.k !== 3) wanted.add(`${trimSlash(folder)}/${c.n}`);
     }
-    const gio = await run("gio", ["trash", "--", real], 120000);
-    if (gio.code !== 0) {
-      const failure = await this.trashToHome(real);
-      if (failure) return { ok: false, message: `Couldn't move it to the Trash: ${failure}` };
+    // Shortest first, so a parent is kept and anything inside it is dropped.
+    const kept: string[] = [];
+    for (const p of [...wanted].sort((a, b) => a.length - b.length)) {
+      if (!kept.some((k) => p.startsWith(k === "/" ? "/" : k + "/"))) kept.push(p);
     }
-    this.forget(trail);
-    return { ok: true, message: `Moved ${basename(real)} to the Trash.` };
+    const targets: Array<{ path: string; trail: DiskNode[] }> = [];
+    let moved = 0;
+    let freed = 0;
+    for (const path of kept) {
+      const located = this.locate(path);
+      if (!located || located.trail.length < 2) {
+        failed.push({ path, message: "That item isn't part of the scan." });
+        continue;
+      }
+      const refusal = protectedReason(path);
+      if (refusal) {
+        failed.push({ path, message: refusal });
+        continue;
+      }
+      if (!existsSync(path)) {
+        // Already gone: just drop it from the scan.
+        freed += located.node.s;
+        moved++;
+        this.forget(located.trail, false);
+        continue;
+      }
+      targets.push({ path, trail: located.trail });
+    }
+    const errors = targets.length ? await moveToTrash(targets.map((t) => t.path)) : new Map<string, string>();
+    for (const t of targets) {
+      const error = errors.get(t.path);
+      if (error) {
+        failed.push({ path: t.path, message: error });
+        continue;
+      }
+      freed += t.trail[t.trail.length - 1].s;
+      moved++;
+      this.forget(t.trail, false);
+    }
+    if (moved) this.save();
+    const where = IS_WIN ? "Recycle Bin" : "Trash";
+    const message = failed.length
+      ? `Moved ${moved} of ${moved + failed.length} items to the ${where}.`
+      : moved === 1
+      ? `Moved ${basename(kept[0])} to the ${where}.`
+      : `Moved ${moved} items to the ${where}.`;
+    return { ok: failed.length === 0 && moved > 0, moved, freed, failed, message };
   }
 
-  /** The freedesktop Trash layout: the item under files/, and where it came from under info/. Returns an error, or null. */
-  private async trashToHome(real: string): Promise<string | null> {
-    const trash = join(process.env.XDG_DATA_HOME || join(HOME, ".local", "share"), "Trash");
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const now = new Date();
-    const deleted = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-    try {
-      mkdirSync(join(trash, "files"), { recursive: true });
-      mkdirSync(join(trash, "info"), { recursive: true });
-      let name = basename(real);
-      for (let i = 2; existsSync(join(trash, "files", name)) || existsSync(join(trash, "info", `${name}.trashinfo`)); i++) name = `${basename(real)}.${i}`;
-      const info = join(trash, "info", `${name}.trashinfo`);
-      // The record goes first, as the spec asks, so a half-moved item is never orphaned.
-      writeFileSync(info, `[Trash Info]\nPath=${real.split("/").map(encodeURIComponent).join("/")}\nDeletionDate=${deleted}\n`, { flag: "wx" });
-      // mv copies and deletes when the trash is on another filesystem, which rename can't do.
-      const { code, stderr } = await run("mv", ["--", real, join(trash, "files", name)], 10 * 60_000);
-      if (code === 0) return null;
-      rmSync(info, { force: true });
-      return stderr.trim().split("\n")[0] || "the move failed.";
-    } catch (error) {
-      return (error as Error).message;
+  /** Permanently deletes what's in the Trash (macOS and Linux). */
+  async emptyTrash(): Promise<TrashResult> {
+    const fail = (message: string): TrashResult => ({ ok: false, moved: 0, freed: 0, failed: [], message });
+    if (IS_WIN) return fail("Empty the Recycle Bin from the desktop.");
+    if (this.state.status === "scanning") return fail("Wait for the scan to finish.");
+    const dir = IS_LINUX ? join(process.env.XDG_DATA_HOME || join(HOME, ".local", "share"), "Trash") : join(HOME, ".Trash");
+    const tool = IS_LINUX ? await run("gio", ["trash", "--empty"], 10 * 60_000) : await run("/usr/bin/osascript", ["-e", 'tell application "Finder" to empty trash'], 10 * 60_000);
+    if (tool.code !== 0) {
+      // No gio, or no Automation access to Finder: delete the entries ourselves.
+      try {
+        const roots = IS_LINUX ? [join(dir, "files"), join(dir, "info")] : [dir];
+        for (const root of roots) {
+          if (!existsSync(root)) continue;
+          for (const name of readdirSync(root)) rmSync(join(root, name), { recursive: true, force: true });
+        }
+      } catch (error) {
+        return fail(`Couldn't empty the Trash: ${(error as Error).message}`);
+      }
     }
+    this.load();
+    let freed = 0;
+    let moved = 0;
+    const located = this.result && this.locate(dir);
+    if (located) {
+      const scope = IS_LINUX ? located.node.c?.filter((c) => c.n === "files" || c.n === "info") ?? [] : [located.node];
+      for (const parent of scope) {
+        const trail = parent === located.node ? located.trail : [...located.trail, parent];
+        for (const child of [...(parent.c ?? [])]) {
+          freed += child.s;
+          moved++;
+          this.forget([...trail, child], false);
+        }
+      }
+      this.save();
+    }
+    return { ok: true, moved, freed, failed: [], message: "Emptied the Trash." };
   }
 
-  private async recycle(real: string, trail: DiskNode[]): Promise<{ ok: boolean; message: string }> {
-    const drive = DATA_VOLUME;
-    const protectedPaths = new Set(
-      [HOME, `${HOME}/Documents`, `${HOME}/Desktop`, `${HOME}/Downloads`, `${HOME}/AppData`, `${HOME}/AppData/Local`, `${HOME}/AppData/Roaming`, drive, `${drive}Windows`, `${drive}Program Files`, `${drive}Program Files (x86)`, `${drive}ProgramData`, `${drive}Users`].map((p) => trimSlash(p).toLowerCase()),
-    );
-    if (protectedPaths.has(trimSlash(real).toLowerCase()) || /^[a-z]:\/?$/i.test(real)) {
-      return { ok: false, message: "Systo won't move a top-level system or user folder to the Recycle Bin." };
-    }
-    if (!existsSync(real)) {
-      this.forget(trail);
-      return { ok: true, message: "It was already gone." };
-    }
-    const { code, stderr } = await powershell(
-      `$ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName Microsoft.VisualBasic
-$p = $env:SYSTO_PATH
-try {
-  if (Test-Path -LiteralPath $p -PathType Container) { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, 'OnlyErrorDialogs', 'SendToRecycleBin') }
-  else { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, 'OnlyErrorDialogs', 'SendToRecycleBin') }
-} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`,
-      { SYSTO_PATH: real.replace(/\//g, "\\") },
-      120000,
-    );
-    if (code !== 0) return { ok: false, message: `Couldn't move it to the Recycle Bin: ${stderr.trim() || "Windows refused."}` };
-    this.forget(trail);
-    return { ok: true, message: `Moved ${basename(real)} to the Recycle Bin.` };
-  }
-
-  private forget(trail: DiskNode[]) {
+  private forget(trail: DiskNode[], save = true) {
     const node = trail[trail.length - 1];
     const parent = trail[trail.length - 2];
     parent.c = parent.c?.filter((c) => c !== node);
@@ -693,7 +811,7 @@ try {
       const abs = `${trimSlash(this.result.root)}/${segments.join("/")}`;
       this.result.topFiles = this.result.topFiles.filter((f) => f.p !== abs && !f.p.startsWith(abs + "/"));
       this.result.stats.bytes = Math.max(0, this.result.stats.bytes - node.s);
-      this.save();
+      if (save) this.save();
     }
   }
 

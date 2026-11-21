@@ -40,6 +40,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -262,6 +263,47 @@ interface TrashTarget {
   path: string;
   name: string;
   size: number;
+  /** Move what's inside the folder and keep the folder itself. */
+  contents?: boolean;
+}
+
+type Selection = Map<string, TrashTarget>;
+
+interface Selecting {
+  selected: Selection;
+  onSelect: (targets: TrashTarget[], on: boolean) => void;
+}
+
+function SelectBox({ target, selected, onSelect, label }: Selecting & { target: TrashTarget; label?: string }) {
+  return (
+    <span className="flex items-center" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+      <Checkbox
+        checked={selected.has(target.path)}
+        onCheckedChange={(v) => onSelect([target], v === true)}
+        aria-label={label ?? `Select ${target.name}`}
+      />
+    </span>
+  );
+}
+
+function SelectionBar({ selected, onClear, onTrash }: { selected: Selection; onClear: () => void; onTrash: () => void }) {
+  if (!selected.size) return null;
+  const size = [...selected.values()].reduce((sum, t) => sum + t.size, 0);
+  return (
+    <div className="flex items-center gap-2 border-t bg-card px-3 py-2">
+      <span className="text-[12px]">
+        <span className="font-medium tabular">{formatCount(selected.size)}</span> selected
+        <span className="tabular text-muted-foreground"> · {formatBytes(size)}</span>
+      </span>
+      <div className="flex-1" />
+      <Button variant="ghost" size="sm" className="h-7 text-[11.5px]" onClick={onClear}>
+        Clear
+      </Button>
+      <Button variant="destructive" size="sm" className="h-7 text-[11.5px]" onClick={onTrash}>
+        <Trash2Icon className="size-3.5" /> Move to {OS.trash}…
+      </Button>
+    </div>
+  );
 }
 
 function Contents({
@@ -271,7 +313,9 @@ function Contents({
   onOpen,
   onTrash,
   colorIcons,
-}: {
+  selected,
+  onSelect,
+}: Selecting & {
   node: DiskViewNode;
   hovered: DiskViewNode | null;
   onHover: (n: DiskViewNode | null) => void;
@@ -282,8 +326,20 @@ function Contents({
   const children = node.children ?? [];
   const max = children.reduce((m, c) => Math.max(m, c.size), 1);
   if (!children.length) return <p className="px-3 py-10 text-center text-[12.5px] text-muted-foreground">This folder is empty.</p>;
+  const selectable = children.filter((c) => c.path).map((c) => ({ path: c.path!, name: c.name, size: c.size }));
+  const picked = selectable.filter((t) => selected.has(t.path)).length;
   return (
     <div className="divide-y" onMouseLeave={() => onHover(null)}>
+      {selectable.length > 1 && (
+        <label className="flex cursor-pointer items-center gap-2.5 px-3 py-1.5 text-[11.5px] text-muted-foreground">
+          <Checkbox
+            checked={picked === selectable.length ? true : picked ? "indeterminate" : false}
+            onCheckedChange={(v) => onSelect(selectable, v === true)}
+            aria-label="Select everything in this folder"
+          />
+          Select all
+        </label>
+      )}
       {children.map((child) => {
         const openable = child.kind !== "file" && child.kind !== "rest" && child.hasChildren;
         const active = hovered && child.path && (hovered.path === child.path || hovered.path?.startsWith(child.path + "/"));
@@ -296,11 +352,12 @@ function Contents({
             onClick={() => openable && onOpen(child)}
             onKeyDown={(e) => openable && e.key === "Enter" && onOpen(child)}
             className={cn(
-              "group/row grid grid-cols-[minmax(0,1fr)_76px_44px_28px] items-center gap-2.5 px-3 py-[7px] outline-none",
+              "group/row grid grid-cols-[16px_minmax(0,1fr)_76px_44px_28px] items-center gap-2.5 px-3 py-[7px] outline-none",
               openable && "cursor-pointer",
               active ? "bg-accent/60" : "hover:bg-accent/40 focus-visible:bg-accent/40",
             )}
           >
+            {child.path ? <SelectBox target={{ path: child.path, name: child.name, size: child.size }} selected={selected} onSelect={onSelect} /> : <span />}
             <div className="flex min-w-0 items-center gap-2.5">
               <NodeIcon node={child} colorIcons={colorIcons} />
               <div className="min-w-0 flex-1">
@@ -327,13 +384,24 @@ function Contents({
   );
 }
 
-function LargestFiles({ files, onTrash }: { files: NonNullable<DiskReport["topFiles"]>; onTrash: (t: TrashTarget) => void }) {
+function LargestFiles({ files, onTrash, selected, onSelect }: Selecting & { files: NonNullable<DiskReport["topFiles"]>; onTrash: (t: TrashTarget) => void }) {
   if (!files.length) return <p className="px-3 py-10 text-center text-[12.5px] text-muted-foreground">No files here.</p>;
   const max = files[0].size || 1;
+  const targets = files.map((f) => ({ path: f.path, name: basename(f.path), size: f.size }));
+  const picked = targets.filter((t) => selected.has(t.path)).length;
   return (
     <div className="divide-y">
+      <label className="flex cursor-pointer items-center gap-2.5 px-3 py-1.5 text-[11.5px] text-muted-foreground">
+        <Checkbox
+          checked={picked === targets.length ? true : picked ? "indeterminate" : false}
+          onCheckedChange={(v) => onSelect(targets, v === true)}
+          aria-label="Select all files"
+        />
+        Select all
+      </label>
       {files.map((f, i) => (
-        <div key={f.path} className="group/row grid grid-cols-[22px_minmax(0,1fr)_76px_28px] items-center gap-2.5 px-3 py-[7px] hover:bg-accent/40">
+        <div key={f.path} className="group/row grid grid-cols-[16px_22px_minmax(0,1fr)_76px_28px] items-center gap-2.5 px-3 py-[7px] hover:bg-accent/40">
+          <SelectBox target={targets[i]} selected={selected} onSelect={onSelect} />
           <span className="tabular text-right text-[11px] text-muted-foreground/70">{i + 1}</span>
           <div className="min-w-0">
             <div className="truncate text-[12.5px] font-medium" title={f.path}>{basename(f.path)}</div>
@@ -399,12 +467,39 @@ function FileTypes({ categories }: { categories: NonNullable<DiskReport["categor
   );
 }
 
-function Suggestion({ s, onTrash, onOpen }: { s: DiskSuggestion; onTrash: (t: TrashTarget) => void; onOpen: (path: string) => void }) {
+/** What cleaning up a suggestion moves: its listed folders, or everything inside its one folder. */
+function suggestionTargets(s: DiskSuggestion): TrashTarget[] {
+  if (s.id === "trash") return [];
+  if (s.items?.length) return s.items.map((i) => ({ path: i.path, name: basename(i.path), size: i.size }));
+  return s.path ? [{ path: s.path, name: s.title, size: s.size, contents: true }] : [];
+}
+
+function Suggestion({
+  s,
+  onTrash,
+  onOpen,
+  onEmptyTrash,
+  selected,
+  onSelect,
+}: Selecting & { s: DiskSuggestion; onTrash: (t: TrashTarget | TrashTarget[]) => void; onOpen: (path: string) => void; onEmptyTrash: () => void }) {
   const [open, setOpen] = useState(false);
   const many = (s.items?.length ?? 0) > 1;
+  const targets = suggestionTargets(s);
+  const picked = targets.filter((t) => selected.has(t.path)).length;
+  // Only safe suggestions can be cleaned in one go; the others need a look first.
+  const cleanable = s.safe && targets.length > 0;
   return (
-    <div className="rounded-xl border bg-card">
+    <div className={cn("rounded-xl border bg-card", cleanable && picked > 0 && "border-foreground/30")}>
       <div className="flex items-start gap-3 p-3">
+        {cleanable && (
+          <span className="pt-0.5">
+            <Checkbox
+              checked={picked === targets.length ? true : picked ? "indeterminate" : false}
+              onCheckedChange={(v) => onSelect(targets, v === true)}
+              aria-label={`Select ${s.title}`}
+            />
+          </span>
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="text-[13px] font-medium">{s.title}</span>
@@ -413,7 +508,17 @@ function Suggestion({ s, onTrash, onOpen }: { s: DiskSuggestion; onTrash: (t: Tr
             )}
           </div>
           <p className="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">{s.description}</p>
-          <div className="mt-2 flex items-center gap-1.5">
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {s.id === "trash" && (
+              <Button variant="outline" size="sm" className="h-7 text-[11.5px]" onClick={onEmptyTrash}>
+                <Trash2Icon className="size-3.5" /> Empty {OS.trash}…
+              </Button>
+            )}
+            {cleanable && (
+              <Button variant="outline" size="sm" className="h-7 text-[11.5px]" onClick={() => onTrash(targets)}>
+                <SparklesIcon className="size-3.5" /> Clean up…
+              </Button>
+            )}
             {s.path && !many && (
               <>
                 <Button variant="outline" size="sm" className="h-7 text-[11.5px]" onClick={() => onOpen(s.path!)}>
@@ -427,7 +532,8 @@ function Suggestion({ s, onTrash, onOpen }: { s: DiskSuggestion; onTrash: (t: Tr
             {many && (
               <Button variant="outline" size="sm" className="h-7 text-[11.5px]" onClick={() => setOpen((v) => !v)}>
                 <ChevronDownIcon className={cn("size-3.5 transition-transform", open && "rotate-180")} />
-                {open ? "Hide" : "Show"} {s.count ?? s.items!.length} {s.id === "dev-folders" ? "folders" : "locations"}
+                {open ? "Hide" : "Show"} {s.items!.length} {s.id === "dev-folders" ? "folders" : "locations"}
+                {s.count && s.count > s.items!.length ? ` of ${formatCount(s.count)}` : ""}
               </Button>
             )}
           </div>
@@ -437,7 +543,8 @@ function Suggestion({ s, onTrash, onOpen }: { s: DiskSuggestion; onTrash: (t: Tr
       {many && open && (
         <div className="divide-y border-t">
           {s.items!.map((item) => (
-            <div key={item.path} className="group/row grid grid-cols-[minmax(0,1fr)_70px_28px] items-center gap-2 px-3 py-1.5 hover:bg-accent/40">
+            <div key={item.path} className="group/row grid grid-cols-[16px_minmax(0,1fr)_70px_28px] items-center gap-2 px-3 py-1.5 hover:bg-accent/40">
+              <SelectBox target={{ path: item.path, name: basename(item.path), size: item.size }} selected={selected} onSelect={onSelect} />
               <div className="truncate font-mono text-[10.5px] text-muted-foreground" title={item.path}>{item.path}</div>
               <span className="tabular text-right text-[11.5px]">{formatBytes(item.size)}</span>
               <div className="flex justify-end">
@@ -458,7 +565,18 @@ export function DiskView() {
   const [mode, setMode] = useState<ChartMode>("sunburst");
   const [hovered, setHovered] = useState<DiskViewNode | null>(null);
   const [tab, setTab] = useState("contents");
-  const [trashTarget, setTrashTarget] = useState<TrashTarget | null>(null);
+  const [trashTargets, setTrashTargets] = useState<TrashTarget[] | null>(null);
+  const [selected, setSelected] = useState<Selection>(() => new Map());
+  const [confirmEmpty, setConfirmEmpty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const askTrash = (t: TrashTarget | TrashTarget[]) => setTrashTargets(Array.isArray(t) ? t : [t]);
+  const select = (targets: TrashTarget[], on: boolean) =>
+    setSelected((prev) => {
+      const next = new Map(prev);
+      for (const t of targets) on ? next.set(t.path, t) : next.delete(t.path);
+      return next;
+    });
+  const clearSelection = () => setSelected(new Map());
   const [scanningHint, setScanningHint] = useState(false);
   const { settings } = useSettings();
 
@@ -472,6 +590,8 @@ export function DiskView() {
   }, [scanning]);
 
   useEffect(() => setHovered(null), [path, mode]);
+  // A selection belongs to the list it was made in.
+  useEffect(() => setSelected(new Map()), [path, tab]);
 
   const startScan = async (root: string) => {
     let target = root;
@@ -483,6 +603,7 @@ export function DiskView() {
       target = chosen.path;
     }
     setScanningHint(true);
+    clearSelection();
     try {
       const res = await post<{ ok: boolean; message?: string }>({ action: "scan", root: target });
       if (!res.ok) {
@@ -505,15 +626,51 @@ export function DiskView() {
   };
 
   const confirmTrash = async () => {
-    if (!trashTarget) return;
-    const target = trashTarget;
-    setTrashTarget(null);
-    const res = await post<{ ok: boolean; message: string }>({ action: "trash", path: target.path });
-    if (res.ok) {
-      toast.success(`Moved ${target.name} to the ${OS.trash}`, { description: `${formatBytes(target.size)} will be freed when you empty the ${OS.trash}.` });
-      if (path && (path === target.path || path.startsWith(target.path + "/"))) setPath(dirname(target.path));
-    } else toast.error(`Couldn't move ${target.name}`, { description: res.message });
-    refresh();
+    if (!trashTargets?.length) return;
+    const targets = trashTargets;
+    setTrashTargets(null);
+    setBusy(true);
+    const pending = toast.loading(targets.length === 1 && !targets[0].contents ? `Moving ${targets[0].name} to the ${OS.trash}…` : `Cleaning up ${formatBytes(targets.reduce((sum, t) => sum + t.size, 0))}…`);
+    try {
+      const res = await post<{ ok: boolean; moved: number; freed: number; failed: Array<{ path: string; message: string }>; message: string }>({
+        action: "trash-many",
+        paths: targets.filter((t) => !t.contents).map((t) => t.path),
+        contents: targets.filter((t) => t.contents).map((t) => t.path),
+      });
+      const description = `${formatBytes(res.freed ?? 0)} will be freed when you empty the ${OS.trash}.`;
+      if (res.ok) toast.success(res.message, { id: pending, description });
+      else if (res.moved) toast.warning(res.message, { id: pending, description: `${description} ${res.failed.length} couldn't be moved: ${res.failed[0]?.message}` });
+      else toast.error("Nothing was moved", { id: pending, description: res.failed?.[0]?.message ?? res.message });
+      const gone = targets.filter((t) => !t.contents && !res.failed?.some((f) => f.path === t.path));
+      const hit = gone.find((t) => path && (path === t.path || path.startsWith(t.path + "/")));
+      if (hit) setPath(dirname(hit.path));
+      setSelected((prev) => {
+        const next = new Map(prev);
+        for (const t of targets) if (!res.failed?.some((f) => f.path === t.path)) next.delete(t.path);
+        return next;
+      });
+    } catch (error) {
+      toast.error("Couldn't move the items", { id: pending, description: (error as Error).message });
+    } finally {
+      setBusy(false);
+      refresh();
+    }
+  };
+
+  const emptyTrash = async () => {
+    setConfirmEmpty(false);
+    setBusy(true);
+    const pending = toast.loading(`Emptying the ${OS.trash}…`);
+    try {
+      const res = await post<{ ok: boolean; freed: number; message: string }>({ action: "empty-trash" });
+      if (res.ok) toast.success(res.message, { id: pending, description: res.freed ? `${formatBytes(res.freed)} freed.` : undefined });
+      else toast.error(`Couldn't empty the ${OS.trash}`, { id: pending, description: res.message });
+    } catch (error) {
+      toast.error(`Couldn't empty the ${OS.trash}`, { id: pending, description: (error as Error).message });
+    } finally {
+      setBusy(false);
+      refresh();
+    }
   };
 
   const open = (node: DiskViewNode) => {
@@ -531,6 +688,9 @@ export function DiskView() {
   const parent = crumbs.length > 1 ? crumbs[crumbs.length - 2].path : undefined;
   const suggestions = data?.suggestions ?? [];
   const reclaimable = useMemo(() => suggestions.filter((s) => s.safe).reduce((sum, s) => sum + s.size, 0), [suggestions]);
+  const safeTargets = useMemo(() => suggestions.filter((s) => s.safe).flatMap(suggestionTargets), [suggestions]);
+  const trashSize = (trashTargets ?? []).reduce((sum, t) => sum + t.size, 0);
+  const single = trashTargets?.length === 1 ? trashTargets[0] : null;
   const hoverInfo = hovered ?? null;
 
   return (
@@ -688,10 +848,10 @@ export function DiskView() {
                 </div>
                 <div className="scrollbar-thin max-h-[560px] min-h-0 flex-1 overflow-y-auto">
                   <TabsContent value="contents" className="m-0">
-                    <Contents node={view.node} hovered={hovered} onHover={setHovered} onOpen={open} onTrash={setTrashTarget} colorIcons={settings.colorIcons} />
+                    <Contents node={view.node} hovered={hovered} onHover={setHovered} onOpen={open} onTrash={askTrash} colorIcons={settings.colorIcons} selected={selected} onSelect={select} />
                   </TabsContent>
                   <TabsContent value="files" className="m-0">
-                    <LargestFiles files={data.topFiles ?? []} onTrash={setTrashTarget} />
+                    <LargestFiles files={data.topFiles ?? []} onTrash={askTrash} selected={selected} onSelect={select} />
                   </TabsContent>
                   <TabsContent value="types" className="m-0">
                     <FileTypes categories={data.categories ?? []} />
@@ -704,14 +864,29 @@ export function DiskView() {
                       </div>
                     ) : (
                       <>
-                        <p className="px-0.5 text-[11.5px] leading-relaxed text-muted-foreground">
-                          Places that commonly grow large. Look before you delete; Systo only ever moves things to the {OS.trash}.
-                        </p>
+                        <div className="flex items-start gap-3 px-0.5">
+                          <p className="flex-1 text-[11.5px] leading-relaxed text-muted-foreground">
+                            Places that commonly grow large. Tick the ones you want gone and clean them up together; Systo only ever moves things to the {OS.trash}.
+                          </p>
+                          {safeTargets.length > 0 && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 shrink-0 text-[11.5px]"
+                              onClick={() => select(safeTargets, !safeTargets.every((t) => selected.has(t.path)))}
+                            >
+                              {safeTargets.every((t) => selected.has(t.path)) ? "Deselect safe" : "Select all safe"}
+                            </Button>
+                          )}
+                        </div>
                         {suggestions.map((s) => (
                           <Suggestion
                             key={s.id}
                             s={s}
-                            onTrash={setTrashTarget}
+                            onTrash={askTrash}
+                            onEmptyTrash={() => setConfirmEmpty(true)}
+                            selected={selected}
+                            onSelect={select}
                             onOpen={(p) => {
                               setPath(p);
                               setTab("contents");
@@ -722,24 +897,62 @@ export function DiskView() {
                     )}
                   </TabsContent>
                 </div>
+                <SelectionBar selected={selected} onClear={clearSelection} onTrash={() => !busy && askTrash([...selected.values()])} />
               </Tabs>
             </div>
           </>
         )}
       </section>
 
-      <AlertDialog open={trashTarget !== null} onOpenChange={(o) => !o && setTrashTarget(null)}>
+      <AlertDialog open={trashTargets !== null} onOpenChange={(o) => !o && setTrashTargets(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Move “{trashTarget?.name}” to the {OS.trash}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {single && !single.contents
+                ? `Move “${single.name}” to the ${OS.trash}?`
+                : single
+                ? `Clean up ${single.name}?`
+                : `Move ${formatCount(trashTargets?.length ?? 0)} items to the ${OS.trash}?`}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {trashTarget && formatBytes(trashTarget.size)} will be freed once you empty the {OS.trash}. Until then you can put it back from the {OS.trash}.
-              <span className="mt-2 block truncate font-mono text-[11px]">{trashTarget?.path}</span>
+              {single?.contents ? `Everything inside the folder goes to the ${OS.trash}; the folder itself stays. ` : ""}
+              {formatBytes(trashSize)} will be freed once you empty the {OS.trash}. Until then you can put {trashTargets?.length === 1 && !single?.contents ? "it" : "them"} back from the {OS.trash}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="scrollbar-thin max-h-56 divide-y overflow-y-auto rounded-lg border">
+            {trashTargets?.map((t) => (
+              <div key={t.path} className="grid grid-cols-[minmax(0,1fr)_70px] items-center gap-2 px-2.5 py-1.5">
+                <div className="min-w-0">
+                  <div className="truncate text-[12px] font-medium">
+                    {t.contents ? `Everything in ${t.name}` : t.name}
+                  </div>
+                  <div className="truncate font-mono text-[10.5px] text-muted-foreground" title={t.path}>{t.path}</div>
+                </div>
+                <span className="tabular text-right text-[11.5px]">{formatBytes(t.size)}</span>
+              </div>
+            ))}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void confirmTrash()}>Move to {OS.trash}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmEmpty} onOpenChange={setConfirmEmpty}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Empty the {OS.trash}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Everything in the {OS.trash} is deleted for good and can't be put back. This frees{" "}
+              {formatBytes(suggestions.find((s) => s.id === "trash")?.size ?? 0)}.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void confirmTrash()}>Move to {OS.trash}</AlertDialogAction>
+            <AlertDialogAction className="bg-destructive text-white hover:bg-destructive/90" onClick={() => void emptyTrash()}>
+              Empty {OS.trash}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
