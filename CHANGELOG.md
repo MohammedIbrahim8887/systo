@@ -6,10 +6,22 @@ GitHub release notes, and the website's changelog page renders this file.
 ## [0.1.9] - 2026-11-23
 
 ### Added
-- **Global shortcuts.** A new Shortcuts view (⌘7 / Ctrl+7) lets you bind keys that work in every app to open an app, a website, a file or folder, run a command, or show Systo and toggle the Dynamic Island.
-- **Live key recorder.** Each modifier lights up as you hold it and the key lands in place, with plain-language checks: it refuses combos that would hijack normal typing and warns before you reuse keys the system already uses.
-- **Shortcuts already in use, in tabs.** Yours, the system's (from your Keyboard Shortcuts settings on macOS; Hyprland, GNOME or KDE on Linux), other apps', and everyday keys like copy and paste. Search by name, or press keys to see everything that uses them and whether they're free.
-- **Keys held by other apps.** Systo tries every combination to find keys running apps keep for themselves, such as a hotkey helper's ⇧⌘T, and lets you name them. It also reads skhd, AeroSpace, Hammerspoon, Rectangle, Services and App Shortcuts on macOS, and shortcut keys and AutoHotkey scripts on Windows.
+- **Global shortcuts.** A new Shortcuts view (⌘7 on macOS, Ctrl+7 elsewhere) binds keys that work in every app, even with Systo's window closed. A shortcut can open an app, a website, a file or folder, run a command, show Systo, or turn the Dynamic Island on and off.
+- **Live key recorder.** Each modifier lights up as you hold it and the key lands in place, drawn as keycaps in your platform's own symbols. Esc cancels and ⌫ clears. Your existing shortcuts pause while you record, so pressing one doesn't launch it.
+- **Plain-language checks as you record.** Systo says whether the keys are free, shared with something else, or blocked, and refuses combinations that would take over normal typing, like a bare letter or ⌥ plus a letter on a Mac.
+- **Everything in one place.** Search your shortcuts by name or keys, try one without pressing it, edit or re-record from its row, turn it on or off, and undo a delete. Rows show when each was last used and how many times, and flash when you press one.
+- **Shortcuts already in use, in tabs.** Yours, the system's, other apps', and everyday keys like copy and paste each get a tab with a count. The system tab reads your own Keyboard Shortcuts settings on macOS, and Hyprland, GNOME or KDE bindings on Linux.
+- **Look up by pressing keys.** Press a combination in the search box to see everything that uses it across every tab, or that it's free, with a one-click "Use for a shortcut".
+- **Keys held by other apps.** Systo tries every combination to find keys that running apps keep for themselves, such as a hotkey helper's ⇧⌘T, and lets you name them. It also reads skhd, AeroSpace, Hammerspoon, Rectangle, Services and App Shortcuts on macOS, and shortcut keys on Start menu items and AutoHotkey scripts on Windows.
+
+### Improved
+- The app picker lists installed apps with their icons, supports search and arrow keys, and also takes any app you choose from a file picker.
+- Start menu shortcuts on Windows now show their icons.
+
+### Notes
+- macOS asks you to turn Systo on in System Settings › Privacy & Security › Accessibility before shortcuts work in other apps. Systo shows a banner with a button, and starts listening the moment you allow it.
+- Detecting held keys works on macOS and Windows. Apps that listen without reserving their keys, such as Raycast, can't be seen this way.
+- If another app already holds your keys, Systo marks the shortcut "Blocked", since it can't hear them while that app runs.
 
 ## [0.1.8] - 2026-11-21
 
