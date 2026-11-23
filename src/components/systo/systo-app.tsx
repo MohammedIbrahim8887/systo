@@ -2,7 +2,7 @@
 
 import { OS, isModKey } from "@/lib/platform";
 import { useEffect, useState, type ReactNode } from "react";
-import { SparklesIcon, ActivityIcon, ArrowDownToLineIcon, HardDriveIcon, HistoryIcon, ListTreeIcon, PowerIcon, SettingsIcon, type LucideIcon } from "lucide-react";
+import { SparklesIcon, ActivityIcon, ArrowDownToLineIcon, HardDriveIcon, HistoryIcon, KeyboardIcon, ListTreeIcon, PowerIcon, SettingsIcon, type LucideIcon } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Kbd } from "@/components/ui/kbd";
@@ -21,11 +21,12 @@ import { PerformanceView } from "./performance-view";
 import { ProcessesView } from "./processes-view";
 import { SettingsDialog } from "./settings-dialog";
 import { DiskView } from "./disk-view";
+import { ShortcutsView } from "./shortcuts-view";
 import { StartupView } from "./startup-view";
 
-type View = "processes" | "performance" | "history" | "startup" | "disk" | "ai";
+type View = "processes" | "performance" | "history" | "startup" | "disk" | "ai" | "shortcuts";
 
-const SHORTCUTS: Record<string, View> = { "1": "processes", "2": "performance", "3": "history", "4": "startup", "5": "disk", "6": "ai" };
+const SHORTCUTS: Record<string, View> = { "1": "processes", "2": "performance", "3": "history", "4": "startup", "5": "disk", "6": "ai", "7": "shortcuts" };
 
 function NavItem({
   icon: Icon,
@@ -145,6 +146,7 @@ function Shell() {
             <NavItem icon={PowerIcon} label="Startup" active={view === "startup"} onClick={() => setView("startup")} shortcut={`${OS.mod}4`} />
             <NavItem icon={HardDriveIcon} label="Disk" active={view === "disk"} onClick={() => setView("disk")} shortcut={`${OS.mod}5`} />
             <NavItem icon={SparklesIcon} label="AI usage" active={view === "ai"} onClick={() => setView("ai")} shortcut={`${OS.mod}6`} />
+            <NavItem icon={KeyboardIcon} label="Shortcuts" active={view === "shortcuts"} onClick={() => setView("shortcuts")} shortcut={`${OS.mod}7`} />
           </nav>
 
           <div className="mt-auto space-y-3 px-4 pb-3">
@@ -169,6 +171,7 @@ function Shell() {
           {view === "startup" && <StartupView />}
           {view === "disk" && <DiskView />}
           {view === "ai" && <AIUsageView />}
+          {view === "shortcuts" && <ShortcutsView />}
         </main>
       </div>
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />

@@ -159,6 +159,11 @@ export function entryForFile(file: string): DesktopEntry | undefined {
   return entries().byFile.get(file);
 }
 
+/** What an app launcher lists: visible entries, one per id, the user's own overriding the system's. */
+export function launcherEntries(): DesktopEntry[] {
+  return [...entries().byId.values()].filter((entry) => !entry.noDisplay && !entry.hidden && entry.exec);
+}
+
 // ── Windows ────────────────────────────────────────────────────────────────────────────────
 
 let windowsCache: { at: number; value: Map<number, string> } | null = null;

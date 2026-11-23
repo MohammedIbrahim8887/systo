@@ -3,6 +3,14 @@
 All notable changes to Systo. The release workflow publishes each version's section as its
 GitHub release notes, and the website's changelog page renders this file.
 
+## [0.1.9] - 2026-11-23
+
+### Added
+- **Global shortcuts.** A new Shortcuts view (⌘7 / Ctrl+7) lets you bind keys that work in every app to open an app, a website, a file or folder, run a command, or show Systo and toggle the Dynamic Island.
+- **Live key recorder.** Each modifier lights up as you hold it and the key lands in place, with plain-language checks: it refuses combos that would hijack normal typing and warns before you reuse keys the system already uses.
+- **Shortcuts already in use, in tabs.** Yours, the system's (from your Keyboard Shortcuts settings on macOS; Hyprland, GNOME or KDE on Linux), other apps', and everyday keys like copy and paste. Search by name, or press keys to see everything that uses them and whether they're free.
+- **Keys held by other apps.** Systo tries every combination to find keys running apps keep for themselves, such as a hotkey helper's ⇧⌘T, and lets you name them. It also reads skhd, AeroSpace, Hammerspoon, Rectangle, Services and App Shortcuts on macOS, and shortcut keys and AutoHotkey scripts on Windows.
+
 ## [0.1.8] - 2026-11-21
 
 ### Added

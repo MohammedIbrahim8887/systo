@@ -13,7 +13,8 @@ export async function GET(request: Request) {
     png = icon?.data ?? null;
     if (icon) type = icon.type;
   } else if (process.platform === "win32") {
-    if (!/^[A-Za-z]:\\.+\.exe$/i.test(path)) return new Response(null, { status: 400 });
+    // Start menu shortcuts (.lnk) show their target's icon, which is what the shortcuts editor lists.
+    if (!/^[A-Za-z]:\\.+\.(exe|lnk)$/i.test(path)) return new Response(null, { status: 400 });
     png = await exeIcon(path);
   } else {
     if (!path.startsWith("/") || !path.endsWith(".app")) return new Response(null, { status: 400 });

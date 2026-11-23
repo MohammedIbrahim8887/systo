@@ -139,6 +139,55 @@
   }
 }
 
+/* Shortcuts: a key cap landing, a rejected combo, a row whose shortcut was just pressed. */
+@keyframes systo-key-in {
+  0% {
+    transform: translateY(-3px) scale(0.86);
+    opacity: 0;
+  }
+  60% {
+    transform: translateY(1px) scale(1.03);
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes systo-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-4px);
+  }
+  40%,
+  80% {
+    transform: translateX(4px);
+  }
+}
+
+@keyframes systo-flash {
+  0% {
+    background-color: color-mix(in oklch, var(--foreground) 10%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes systo-listen {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--foreground) 14%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in oklch, var(--foreground) 0%, transparent);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

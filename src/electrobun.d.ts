@@ -82,6 +82,23 @@ declare module "electrobun/main" {
     paths: { userData: string };
     quit(): void;
     openExternal(url: string): boolean;
+    openPath(path: string): boolean;
+    openFileDialog(options?: {
+      startingFolder?: string;
+      /** Comma-separated extensions without dots ("app", "exe,lnk"), or "*". */
+      allowedFileTypes?: string;
+      canChooseFiles?: boolean;
+      canChooseDirectory?: boolean;
+      allowsMultipleSelection?: boolean;
+    }): Promise<string[]>;
+  };
+
+  /** System-wide shortcuts. Accelerators look like "Command+Shift+K" or "Control+Alt+Delete". */
+  export const GlobalShortcut: {
+    register(accelerator: string, callback: () => void): boolean;
+    unregister(accelerator: string): boolean;
+    unregisterAll(): void;
+    isRegistered(accelerator: string): boolean;
   };
 
   const Electrobun: {

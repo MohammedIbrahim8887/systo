@@ -10,6 +10,7 @@ import { LinuxIslandController } from "./shell/island-linux";
 import { WinIslandController } from "./shell/island-win";
 import { TRAY_ICON_PNG, TRAY_ICON_PNG_WINDOWS } from "./shell/tray-icon";
 import { AppUpdater } from "./shell/updater";
+import { HotkeyHost } from "./shell/hotkeys";
 import { initializeAutostart } from "./lib/server/autostart";
 import type { UpdateState } from "./lib/update-types";
 
@@ -211,6 +212,16 @@ export default defineDesktop<BrowserWindow>({
 
     wireMain(window);
     pushShellState(window);
+
+    // System-wide shortcuts. /api/hotkeys edits them and reaches the host through the shared process.
+    const hotkeys = new HotkeyHost((command) => {
+      if (command === "open-main") {
+        island.collapse();
+        openMain();
+      } else if (command === "toggle-island") setIsland(!island.active);
+    }, ISLAND_SUPPORTED);
+    (globalThis as { __systoHotkeys?: HotkeyHost }).__systoHotkeys = hotkeys;
+    hotkeys.start();
 
     try {
       tray = IS_MAC

@@ -13,6 +13,8 @@ import type { GET as GET_disk } from "../app/api/disk/route";
 import type { POST as POST_disk } from "../app/api/disk/route";
 import type { POST as POST_end } from "../app/api/end/route";
 import type { GET as GET_explain } from "../app/api/explain/route";
+import type { GET as GET_hotkeys } from "../app/api/hotkeys/route";
+import type { POST as POST_hotkeys } from "../app/api/hotkeys/route";
 import type { GET as GET_icon } from "../app/api/icon/route";
 import type { GET as GET_island } from "../app/api/island/route";
 import type { POST as POST_reveal } from "../app/api/reveal/route";
@@ -44,6 +46,10 @@ export type APIRouter = {
   };
   explain: {
     get: typeof GET_explain;
+  };
+  hotkeys: {
+    get: typeof GET_hotkeys;
+    post: typeof POST_hotkeys;
   };
   icon: {
     get: typeof GET_icon;
@@ -97,6 +103,10 @@ export const apiRoutes = [
   {
     path: "/api/explain",
     methods: ["GET"],
+  },
+  {
+    path: "/api/hotkeys",
+    methods: ["GET", "POST"],
   },
   {
     path: "/api/icon",
