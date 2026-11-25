@@ -790,7 +790,7 @@ export function ShortcutsView() {
         <div className="flex-1" />
         {listeningState && (
           <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-            <span className={cn("size-1.5 rounded-full", listeningState === "Listening" ? "animate-[systo-pulse_2.4s_ease-in-out_infinite] bg-foreground" : "border border-foreground/40")} />
+            <span className={cn("size-1.5 rounded-full", listeningState === "Listening" ? "animate-[systo-pulse_2.4s_ease-in-out_infinite] bg-data" : "border border-foreground/40")} />
             {listeningState}
           </span>
         )}

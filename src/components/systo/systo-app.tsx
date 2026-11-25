@@ -6,6 +6,7 @@ import { SparklesIcon, ActivityIcon, ArrowDownToLineIcon, HardDriveIcon, History
 import { Toaster } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Kbd } from "@/components/ui/kbd";
+import { AppearanceProvider } from "@/lib/client/appearance";
 import { SettingsProvider, useSettings } from "@/lib/client/settings";
 import { usePoll } from "@/lib/client/use-poll";
 import { sendUpdateAction, useShellState } from "@/lib/client/shell";
@@ -54,7 +55,7 @@ function NavItem({
             active ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
           )}
         >
-          <Icon className="size-4 shrink-0" strokeWidth={1.75} />
+          <Icon className={cn("size-4 shrink-0", active && "text-data")} strokeWidth={1.75} />
           <span className="truncate">{label}</span>
           {children}
         </button>
@@ -75,7 +76,7 @@ function MiniMeter({ label, value, values, max }: { label: string; value: string
         <span className="text-muted-foreground">{label}</span>
         <span className="tabular text-foreground">{value}</span>
       </div>
-      <div className="h-6 text-foreground/80">
+      <div className="h-6 text-data/80">
         <AreaChart series={[{ values }]} max={max} capacity={40} strokeWidth={1} />
       </div>
     </div>
@@ -133,7 +134,7 @@ function Shell() {
 
   return (
     <ActionsProvider onChanged={refresh}>
-      <div className="flex h-screen min-h-0 overflow-hidden bg-background">
+      <div data-app className="flex h-screen min-h-0 overflow-hidden bg-background">
         <aside className="flex w-[188px] shrink-0 flex-col border-r bg-sidebar">
           <div className="flex h-14 items-center gap-2 px-4">
             <Logo className="size-5" />
@@ -186,11 +187,13 @@ export function SystoApp() {
   if (!mounted) return <div className="h-screen bg-background" />;
 
   return (
-    <SettingsProvider>
-      <TooltipProvider delayDuration={400}>
-        <Shell />
-        <Toaster position="bottom-right" />
-      </TooltipProvider>
-    </SettingsProvider>
+    <AppearanceProvider>
+      <SettingsProvider>
+        <TooltipProvider delayDuration={400}>
+          <Shell />
+          <Toaster position="bottom-right" />
+        </TooltipProvider>
+      </SettingsProvider>
+    </AppearanceProvider>
   );
 }

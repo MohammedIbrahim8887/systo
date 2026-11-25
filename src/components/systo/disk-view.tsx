@@ -146,8 +146,8 @@ function ScanProgress({ state, onCancel }: { state: DiskReport["state"]; onCance
     <div className="mx-auto max-w-2xl pt-12">
       <div className="text-[12px] text-muted-foreground">Scanning {state.label}</div>
       <div className="tabular mt-1 text-[44px] leading-none font-semibold tracking-tight">{formatBytes(bytes)}</div>
-      <div className="relative mt-6 h-1 overflow-hidden rounded-full bg-foreground/10">
-        <div className="absolute inset-y-0 w-1/4 rounded-full bg-foreground motion-safe:animate-[systo-sweep_1.6s_ease-in-out_infinite]" />
+      <div className="relative mt-6 h-1 overflow-hidden rounded-full bg-data/10">
+        <div className="absolute inset-y-0 w-1/4 rounded-full bg-data motion-safe:animate-[systo-sweep_1.6s_ease-in-out_infinite]" />
       </div>
       <div className="mt-5 grid grid-cols-3 gap-6">
         {[
@@ -194,28 +194,28 @@ function Capacity({ report }: { report: DiskReport }) {
           <span className="font-medium">{formatBytes(free)}</span> <span className="text-muted-foreground">free of {formatBytes(volume.total)}</span>
         </span>
       </div>
-      <div className="mt-2 flex h-2.5 overflow-hidden rounded-full bg-foreground/[0.06]">
-        <div className="relative h-full bg-foreground/80" style={{ width: pct(Math.min(scanned, volume.used)) }}>
-          {inner > 0 && <div className="absolute inset-y-0 left-0 bg-foreground" style={{ width: `${(inner / Math.max(1, scanned)) * 100}%` }} />}
+      <div className="mt-2 flex h-2.5 overflow-hidden rounded-full bg-data/[0.06]">
+        <div className="relative h-full bg-data/80" style={{ width: pct(Math.min(scanned, volume.used)) }}>
+          {inner > 0 && <div className="absolute inset-y-0 left-0 bg-data" style={{ width: `${(inner / Math.max(1, scanned)) * 100}%` }} />}
         </div>
-        {showOther && <div className="h-full border-l border-background bg-foreground/30" style={{ width: pct(otherUsed) }} />}
+        {showOther && <div className="h-full border-l border-background bg-data/30" style={{ width: pct(otherUsed) }} />}
       </div>
       <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[11.5px] text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <span className="size-2 rounded-[2px] bg-foreground/80" /> {state.label} <span className="tabular text-foreground">{formatBytes(scanned)}</span>
+          <span className="size-2 rounded-[2px] bg-data/80" /> {state.label} <span className="tabular text-foreground">{formatBytes(scanned)}</span>
         </span>
         {inner > 0 && view && (
           <span className="flex items-center gap-1.5">
-            <span className="size-2 rounded-[2px] bg-foreground" /> {view.node.name} <span className="tabular text-foreground">{formatBytes(inner)}</span>
+            <span className="size-2 rounded-[2px] bg-data" /> {view.node.name} <span className="tabular text-foreground">{formatBytes(inner)}</span>
           </span>
         )}
         {showOther && (
           <span className="flex items-center gap-1.5">
-            <span className="size-2 rounded-[2px] bg-foreground/30" /> Apps, system and other users <span className="tabular text-foreground">{formatBytes(otherUsed)}</span>
+            <span className="size-2 rounded-[2px] bg-data/30" /> Apps, system and other users <span className="tabular text-foreground">{formatBytes(otherUsed)}</span>
           </span>
         )}
         <span className="flex items-center gap-1.5">
-          <span className="size-2 rounded-[2px] bg-foreground/[0.08] ring-1 ring-foreground/15 ring-inset" /> Free
+          <span className="size-2 rounded-[2px] bg-data/[0.08] ring-1 ring-data/15 ring-inset" /> Free
         </span>
       </div>
     </div>
@@ -365,8 +365,8 @@ function Contents({
                   <span className="truncate">{child.name}</span>
                   {openable && <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/60" />}
                 </div>
-                <div className="mt-1 h-[3px] overflow-hidden rounded-full bg-foreground/[0.06]">
-                  <div className="h-full rounded-full bg-foreground/60" style={{ width: `${(child.size / max) * 100}%` }} />
+                <div className="mt-1 h-[3px] overflow-hidden rounded-full bg-data/[0.06]">
+                  <div className="h-full rounded-full bg-data/60" style={{ width: `${(child.size / max) * 100}%` }} />
                 </div>
               </div>
             </div>
@@ -407,8 +407,8 @@ function LargestFiles({ files, onTrash, selected, onSelect }: Selecting & { file
             <div className="truncate text-[12.5px] font-medium" title={f.path}>{basename(f.path)}</div>
             <div className="flex items-center gap-2">
               <div className="truncate font-mono text-[10.5px] text-muted-foreground">{dirname(f.path)}</div>
-              <div className="ml-auto h-[3px] w-16 shrink-0 overflow-hidden rounded-full bg-foreground/[0.06]">
-                <div className="h-full bg-foreground/60" style={{ width: `${(f.size / max) * 100}%` }} />
+              <div className="ml-auto h-[3px] w-16 shrink-0 overflow-hidden rounded-full bg-data/[0.06]">
+                <div className="h-full bg-data/60" style={{ width: `${(f.size / max) * 100}%` }} />
               </div>
             </div>
           </div>
@@ -433,7 +433,7 @@ function FileTypes({ categories }: { categories: NonNullable<DiskReport["categor
             <TooltipTrigger asChild>
               <div
                 className="h-full border-r border-background last:border-r-0"
-                style={{ width: `${(c.size / total) * 100}%`, backgroundColor: `color-mix(in oklch, var(--foreground) ${shades[i] * 100}%, transparent)` }}
+                style={{ width: `${(c.size / total) * 100}%`, backgroundColor: `color-mix(in oklch, var(--data) ${shades[i] * 100}%, transparent)` }}
               />
             </TooltipTrigger>
             <TooltipContent>
@@ -448,7 +448,7 @@ function FileTypes({ categories }: { categories: NonNullable<DiskReport["categor
           return (
             <div key={c.id} className="grid grid-cols-[18px_minmax(0,1fr)_104px_72px] items-center gap-2.5 rounded-md px-1 py-1.5">
               <span className="flex items-center justify-center">
-                <span className="size-2.5 rounded-[3px]" style={{ backgroundColor: `color-mix(in oklch, var(--foreground) ${shades[i] * 100}%, transparent)` }} />
+                <span className="size-2.5 rounded-[3px]" style={{ backgroundColor: `color-mix(in oklch, var(--data) ${shades[i] * 100}%, transparent)` }} />
               </span>
               <div className="flex min-w-0 items-center gap-2 text-[12.5px]">
                 <meta.icon className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.75} />
@@ -950,7 +950,7 @@ export function DiskView() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction className="bg-destructive text-white hover:bg-destructive/90" onClick={() => void emptyTrash()}>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => void emptyTrash()}>
               Empty {OS.trash}
             </AlertDialogAction>
           </AlertDialogFooter>

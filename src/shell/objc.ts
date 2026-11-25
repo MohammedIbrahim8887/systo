@@ -53,6 +53,7 @@ export const arg = {
   bool: (v: boolean) => new Uint8Array([v ? 1 : 0]),
   int: (v: number | bigint) => new BigInt64Array([BigInt(v)]),
   uint: (v: number | bigint) => new BigUint64Array([BigInt(v)]),
+  doubles: (...v: number[]) => v.map((n) => new Float64Array([n])),
   rect: (x: number, y: number, w: number, h: number) => new Float64Array([x, y, w, h]),
 };
 
@@ -102,6 +103,94 @@ export interface ScreenGeometry {
   /** Menu bar height on this screen. */
   menuBarHeight: number;
   primaryHeight: number;
+}
+
+/**
+ * Calls a method that returns a fresh object and keeps it. These run on this thread, inside
+ * invoke's own pool: an object autoreleased on the main thread can be gone before we retain it.
+ */
+function makeObject(target: number, selector: string, args: Arg[] = []): bigint {
+  const result = invoke(target, selector, args, 1, false, true);
+  return result ? new BigUint64Array(result.buffer)[0] : 0n;
+}
+
+function nsString(text: string): bigint {
+  const bytes = cstring(text);
+  const pointer = new BigUint64Array([BigInt(ptr(bytes) as number)]);
+  return makeObject(cls("NSString"), "stringWithUTF8String:", [pointer]);
+}
+
+function release(object: bigint) {
+  // Tagged pointers (see invoke) are immortal and were never retained.
+  if (object && object <= BigInt(Number.MAX_SAFE_INTEGER)) invoke(Number(object), "release");
+}
+
+function findWebView(view: number): number {
+  const target = cls("WKWebView");
+  const queue = [view];
+  while (queue.length) {
+    const next = queue.shift()!;
+    const match = invoke(next, "isKindOfClass:", [arg.uint(target)], 1);
+    if (match && new Uint8Array(match.buffer)[0]) return next;
+    const subviews = makeObject(next, "subviews");
+    const list = Number(subviews);
+    if (!list) continue;
+    const count = Number(objc().sendU64(list, sel("count")));
+    // The window owns its views, so these outlive the list.
+    for (let i = 0; i < count; i++) queue.push(objc().sendIndex(list, sel("objectAtIndex:"), i) as number);
+    release(subviews);
+  }
+  return 0;
+}
+
+let coreGraphics: { CGSMainConnectionID: () => number; CGSSetWindowBackgroundBlurRadius: (connection: number, window: number, radius: number) => number } | null | undefined;
+
+/** The blur every translucent terminal uses. Private API, so it is looked up and allowed to be missing. */
+function setBackgroundBlur(window: number, radius: number) {
+  if (coreGraphics === undefined) {
+    try {
+      coreGraphics = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", {
+        CGSMainConnectionID: { args: [], returns: "i32" },
+        CGSSetWindowBackgroundBlurRadius: { args: ["i32", "i32", "i32"], returns: "i32" },
+      }).symbols;
+    } catch {
+      coreGraphics = null;
+    }
+  }
+  const number = invokePointer(window, "windowNumber");
+  if (coreGraphics && number > 0) coreGraphics.CGSSetWindowBackgroundBlurRadius(coreGraphics.CGSMainConnectionID(), number, radius);
+}
+
+export interface WindowPaint {
+  dark: boolean;
+  /** 0–1 each, sRGB. */
+  color: [number, number, number];
+  /** 0–1; 1 is an ordinary opaque window. */
+  opacity: number;
+  blur: number;
+}
+
+/** Title bar in the theme's color, and for a see-through window, what the page leaves unpainted. */
+export function paintWindow(window: number, paint: WindowPaint) {
+  const name = nsString(paint.dark ? "NSAppearanceNameDarkAqua" : "NSAppearanceNameAqua");
+  const appearance = makeObject(cls("NSAppearance"), "appearanceNamed:", [arg.uint(name)]);
+  if (appearance) invoke(window, "setAppearance:", [arg.uint(appearance)]);
+  release(appearance);
+  release(name);
+
+  const opaque = paint.opacity >= 1;
+  invoke(window, "setTitlebarAppearsTransparent:", [arg.bool(true)]);
+  const color = makeObject(cls("NSColor"), "colorWithSRGBRed:green:blue:alpha:", arg.doubles(...paint.color, paint.opacity));
+  if (color) invoke(window, "setBackgroundColor:", [arg.uint(color)]);
+  release(color);
+  invoke(window, "setOpaque:", [arg.bool(opaque)]);
+
+  const content = invokePointer(window, "contentView");
+  const webview = content ? findWebView(content) : 0;
+  // Messages the view doesn't understand are skipped by invoke.
+  if (webview) invoke(webview, "_setDrawsBackground:", [arg.bool(opaque)]);
+  setBackgroundBlur(window, opaque ? 0 : paint.blur);
+  invoke(window, "invalidateShadow");
 }
 
 /** Every attached display in AppKit order, with a common primary-screen coordinate origin. */

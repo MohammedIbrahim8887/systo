@@ -3,7 +3,7 @@
 import { OS, IS_WINDOWS, IS_LINUX, byOS } from "@/lib/platform";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { useTheme } from "@farm.js/core/theme/client";
+import { PaletteIcon, SlidersHorizontalIcon } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -12,6 +12,8 @@ import { useSettings } from "@/lib/client/settings";
 import { sendShellCommand, sendUpdateAction, useShellState } from "@/lib/client/shell";
 import { Button } from "@/components/ui/button";
 import type { UpdateState } from "@/lib/update-types";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AppearanceSettings } from "./appearance-settings";
 
 function Row({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
@@ -138,100 +140,116 @@ function UpdatesRow({ update, desktop }: { update?: UpdateState; desktop: boolea
   );
 }
 
+const SECTIONS = [
+  { id: "general", label: "General", icon: SlidersHorizontalIcon },
+  { id: "appearance", label: "Appearance", icon: PaletteIcon },
+];
+
 export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { settings, update } = useSettings();
-  const { theme, setTheme } = useTheme();
   const shell = useShellState();
   const autostart = useAutostart(open);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
-        <DialogHeader>
-          <DialogTitle>Settings</DialogTitle>
-          <DialogDescription>Saved on this {OS.device}.</DialogDescription>
-        </DialogHeader>
-        <div className="divide-y">
-          <UpdatesRow update={shell?.update} desktop={Boolean(shell?.desktop)} />
-          <Row
-            title={IS_WINDOWS ? "Open at sign-in" : "Open at login"}
-            hint={
-              autostart.state && !autostart.state.available
-                ? autostart.state.reason
-                : `Start Systo automatically when you ${byOS("log in to your Mac", "sign in to Windows", "log in")}.`
-            }
-          >
-            <Switch
-              aria-label={IS_WINDOWS ? "Open at sign-in" : "Open at login"}
-              disabled={!autostart.state?.available || autostart.pending}
-              checked={Boolean(autostart.state?.enabled)}
-              onCheckedChange={(enabled) => void autostart.set(enabled)}
-            />
-          </Row>
-          <Row title="Update speed" hint="How often Systo samples processes.">
-            <Select value={String(settings.interval)} onValueChange={(v) => update({ interval: Number(v) })}>
-              <SelectTrigger size="sm" className="w-36">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1000">Fast · 1s</SelectItem>
-                <SelectItem value="1500">Normal · 1.5s</SelectItem>
-                <SelectItem value="3000">Slow · 3s</SelectItem>
-                <SelectItem value="5000">Slower · 5s</SelectItem>
-                <SelectItem value="0">Paused</SelectItem>
-              </SelectContent>
-            </Select>
-          </Row>
-          <Row title="CPU percentages" hint="Task Manager shows share of the whole chip. Activity Monitor shows 100% per core.">
-            <ToggleGroup type="single" variant="outline" size="sm" value={settings.cpuMode} onValueChange={(v) => v && update({ cpuMode: v as "total" | "core" })}>
-              <ToggleGroupItem value="total" className="px-3 text-[12px]">
-                Total
-              </ToggleGroupItem>
-              <ToggleGroupItem value="core" className="px-3 text-[12px]">
-                Per core
-              </ToggleGroupItem>
-            </ToggleGroup>
-          </Row>
-          <Row title="Heatmap" hint="Shade busy cells, darker the more they use.">
-            <Switch checked={settings.heatmap} onCheckedChange={(v) => update({ heatmap: v })} />
-          </Row>
-          <Row title="Colored app icons" hint="Off keeps the interface monochrome; icons color in on hover.">
-            <Switch checked={settings.colorIcons} onCheckedChange={(v) => update({ colorIcons: v })} />
-          </Row>
-          <Row title="Appearance">
-            <ToggleGroup type="single" variant="outline" size="sm" value={theme} onValueChange={(v) => v && setTheme(v as "light" | "dark" | "system")}>
-              <ToggleGroupItem value="light" className="px-3 text-[12px]">
-                Light
-              </ToggleGroupItem>
-              <ToggleGroupItem value="dark" className="px-3 text-[12px]">
-                Dark
-              </ToggleGroupItem>
-              <ToggleGroupItem value="system" className="px-3 text-[12px]">
-                Auto
-              </ToggleGroupItem>
-            </ToggleGroup>
-          </Row>
-          <Row
-            title="Dynamic Island"
-            hint={
-              shell?.desktop
-                ? !shell.islandSupported
-                  ? "Needs a compositor that can float it above your windows. Hyprland is supported today."
-                  : shell.notch
-                  ? "Hover the notch to see your top 3 apps."
-                  : IS_WINDOWS || IS_LINUX
-                  ? "Hover the pill, then drag its header to move it. It hides while something is fullscreen."
-                  : "No notch on this display; the island sits at the top of the menu bar."
-                : "Available in the desktop app."
-            }
-          >
-            <Switch
-              disabled={!shell?.desktop || !shell.islandSupported}
-              checked={Boolean(shell?.island)}
-              onCheckedChange={(enabled) => sendShellCommand({ type: "island", enabled })}
-            />
-          </Row>
-        </div>
+      <DialogContent className="block h-[min(680px,calc(100vh-3rem))] overflow-hidden p-0 sm:max-w-[800px]">
+        <Tabs defaultValue="general" orientation="vertical" className="h-full gap-0">
+          <div className="flex w-[172px] shrink-0 flex-col border-r bg-sidebar">
+            <DialogHeader className="gap-1.5 px-4 pt-5 pb-4">
+              <DialogTitle className="text-[15px]">Settings</DialogTitle>
+              <DialogDescription className="text-[12px]">Saved on this {OS.device}.</DialogDescription>
+            </DialogHeader>
+            <TabsList className="w-full items-stretch gap-0.5 rounded-none bg-transparent px-2">
+              {SECTIONS.map(({ id, label, icon: Icon }) => (
+                <TabsTrigger
+                  key={id}
+                  value={id}
+                  className="h-8 flex-none gap-2.5 px-2.5 text-[13px] font-normal shadow-none data-[state=active]:bg-accent data-[state=active]:font-medium data-[state=active]:shadow-none dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-accent data-[state=active]:[&_svg]:text-data"
+                >
+                  <Icon strokeWidth={1.75} />
+                  {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+          <TabsContent value="appearance" className="flex min-w-0 flex-col data-[state=inactive]:hidden">
+            <h2 className="shrink-0 px-6 pt-5 pb-3 text-[15px] font-semibold">Appearance</h2>
+            <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-6 pt-1 pb-6">
+              <AppearanceSettings />
+            </div>
+          </TabsContent>
+          <TabsContent value="general" className="flex min-w-0 flex-col data-[state=inactive]:hidden">
+            <h2 className="shrink-0 px-6 pt-5 pb-1 text-[15px] font-semibold">General</h2>
+            <div className="scrollbar-thin min-h-0 flex-1 divide-y overflow-y-auto px-6 pb-6">
+              <UpdatesRow update={shell?.update} desktop={Boolean(shell?.desktop)} />
+              <Row
+                title={IS_WINDOWS ? "Open at sign-in" : "Open at login"}
+                hint={
+                  autostart.state && !autostart.state.available
+                    ? autostart.state.reason
+                    : `Start Systo automatically when you ${byOS("log in to your Mac", "sign in to Windows", "log in")}.`
+                }
+              >
+                <Switch
+                  aria-label={IS_WINDOWS ? "Open at sign-in" : "Open at login"}
+                  disabled={!autostart.state?.available || autostart.pending}
+                  checked={Boolean(autostart.state?.enabled)}
+                  onCheckedChange={(enabled) => void autostart.set(enabled)}
+                />
+              </Row>
+              <Row title="Update speed" hint="How often Systo samples processes.">
+                <Select value={String(settings.interval)} onValueChange={(v) => update({ interval: Number(v) })}>
+                  <SelectTrigger size="sm" className="w-36">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1000">Fast · 1s</SelectItem>
+                    <SelectItem value="1500">Normal · 1.5s</SelectItem>
+                    <SelectItem value="3000">Slow · 3s</SelectItem>
+                    <SelectItem value="5000">Slower · 5s</SelectItem>
+                    <SelectItem value="0">Paused</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Row>
+              <Row title="CPU percentages" hint="Task Manager shows share of the whole chip. Activity Monitor shows 100% per core.">
+                <ToggleGroup type="single" variant="outline" size="sm" value={settings.cpuMode} onValueChange={(v) => v && update({ cpuMode: v as "total" | "core" })}>
+                  <ToggleGroupItem value="total" className="px-3 text-[12px]">
+                    Total
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="core" className="px-3 text-[12px]">
+                    Per core
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              </Row>
+              <Row title="Heatmap" hint="Shade busy cells, darker the more they use.">
+                <Switch checked={settings.heatmap} onCheckedChange={(v) => update({ heatmap: v })} />
+              </Row>
+              <Row title="Colored app icons" hint="Off keeps the interface monochrome; icons color in on hover.">
+                <Switch checked={settings.colorIcons} onCheckedChange={(v) => update({ colorIcons: v })} />
+              </Row>
+              <Row
+                title="Dynamic Island"
+                hint={
+                  shell?.desktop
+                    ? !shell.islandSupported
+                      ? "Needs a compositor that can float it above your windows. Hyprland is supported today."
+                      : shell.notch
+                      ? "Hover the notch to see your top 3 apps."
+                      : IS_WINDOWS || IS_LINUX
+                      ? "Hover the pill, then drag its header to move it. It hides while something is fullscreen."
+                      : "No notch on this display; the island sits at the top of the menu bar."
+                    : "Available in the desktop app."
+                }
+              >
+                <Switch
+                  disabled={!shell?.desktop || !shell.islandSupported}
+                  checked={Boolean(shell?.island)}
+                  onCheckedChange={(enabled) => sendShellCommand({ type: "island", enabled })}
+                />
+              </Row>
+            </div>
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );

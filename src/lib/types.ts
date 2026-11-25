@@ -124,6 +124,9 @@ export interface IslandData {
   overview: Record<Metric, number>;
   storage: { used: number; total: number };
   netPeak: number;
+  /** The dark theme's accent for rings and bars; null keeps them white. */
+  tint?: string | null;
+  colorIcons?: boolean;
 }
 
 export interface SystemInfo {

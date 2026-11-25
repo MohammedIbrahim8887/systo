@@ -7,6 +7,9 @@
 
 import type { GET as GET_ai_usage } from "../app/api/ai-usage/route";
 import type { POST as POST_ai_usage } from "../app/api/ai-usage/route";
+import type { GET as GET_appearance } from "../app/api/appearance/route";
+import type { POST as POST_appearance } from "../app/api/appearance/route";
+import type { GET as GET_appearance_boot } from "../app/api/appearance/boot/route";
 import type { GET as GET_autostart } from "../app/api/autostart/route";
 import type { POST as POST_autostart } from "../app/api/autostart/route";
 import type { GET as GET_disk } from "../app/api/disk/route";
@@ -18,6 +21,8 @@ import type { POST as POST_hotkeys } from "../app/api/hotkeys/route";
 import type { GET as GET_icon } from "../app/api/icon/route";
 import type { GET as GET_island } from "../app/api/island/route";
 import type { POST as POST_reveal } from "../app/api/reveal/route";
+import type { GET as GET_settings } from "../app/api/settings/route";
+import type { POST as POST_settings } from "../app/api/settings/route";
 import type { POST as POST_shell } from "../app/api/shell/route";
 import type { GET as GET_snapshot } from "../app/api/snapshot/route";
 import type { GET as GET_startup } from "../app/api/startup/route";
@@ -32,6 +37,13 @@ export type APIRouter = {
   "ai-usage": {
     get: typeof GET_ai_usage;
     post: typeof POST_ai_usage;
+  };
+  appearance: {
+    get: typeof GET_appearance;
+    post: typeof POST_appearance;
+    boot: {
+      get: typeof GET_appearance_boot;
+    };
   };
   autostart: {
     get: typeof GET_autostart;
@@ -60,6 +72,10 @@ export type APIRouter = {
   reveal: {
     post: typeof POST_reveal;
   };
+  settings: {
+    get: typeof GET_settings;
+    post: typeof POST_settings;
+  };
   shell: {
     post: typeof POST_shell;
   };
@@ -87,6 +103,14 @@ export const apiRoutes = [
   {
     path: "/api/ai-usage",
     methods: ["GET", "POST"],
+  },
+  {
+    path: "/api/appearance",
+    methods: ["GET", "POST"],
+  },
+  {
+    path: "/api/appearance/boot",
+    methods: ["GET"],
   },
   {
     path: "/api/autostart",
@@ -119,6 +143,10 @@ export const apiRoutes = [
   {
     path: "/api/reveal",
     methods: ["POST"],
+  },
+  {
+    path: "/api/settings",
+    methods: ["GET", "POST"],
   },
   {
     path: "/api/shell",

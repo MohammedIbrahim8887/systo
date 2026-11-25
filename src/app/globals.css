@@ -6,8 +6,8 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme inline {
-  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+  --font-sans: var(--ui-font, "Geist Variable"), "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--code-font, "Geist Mono Variable"), "Geist Mono Variable", ui-monospace, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -23,17 +23,25 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-sidebar: var(--sidebar);
   --color-heat: var(--heat);
+  --color-data: var(--data);
+  --color-pane: var(--pane, var(--background));
+  --color-pane-sticky: var(--pane-sticky, var(--background));
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/*
+ * Systo's own theme. Other themes override these tokens from appearanceCss() in lib/theme.ts.
+ * --data colors meters and charts; --heat shades busy cells. Both are the text color here.
+ */
 :root {
   --radius: 0.625rem;
   --background: oklch(1 0 0);
@@ -51,11 +59,13 @@
   --accent: oklch(0.955 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.205 0 0);
+  --destructive-foreground: oklch(1 0 0);
   --border: oklch(0.92 0 0);
   --input: oklch(0.9 0 0);
   --ring: oklch(0.6 0 0);
   --sidebar: oklch(0.982 0 0);
   --heat: oklch(0.145 0 0);
+  --data: var(--foreground);
 }
 
 [data-theme="dark"] {
@@ -74,11 +84,13 @@
   --accent: oklch(0.235 0 0);
   --accent-foreground: oklch(0.96 0 0);
   --destructive: oklch(0.94 0 0);
+  --destructive-foreground: oklch(0.17 0 0);
   --border: oklch(1 0 0 / 9%);
   --input: oklch(1 0 0 / 13%);
   --ring: oklch(0.55 0 0);
   --sidebar: oklch(0.13 0 0);
   --heat: oklch(1 0 0);
+  --data: var(--foreground);
 }
 
 @layer base {
@@ -108,6 +120,38 @@
     background: var(--foreground);
     color: var(--background);
   }
+}
+
+/* A translucent window: the shell paints the see-through background, so the page leaves gaps for it. */
+html[data-window] body,
+html[data-window] [data-app] {
+  background: transparent;
+}
+html[data-window] [data-app] > aside {
+  background: color-mix(in oklab, var(--foreground) 4%, transparent);
+}
+html[data-window="sidebar"] [data-app] > main {
+  background: var(--background);
+}
+html[data-window="glass"] {
+  --pane: transparent;
+  --pane-sticky: color-mix(in oklab, var(--background) 45%, transparent);
+}
+/* Fills become tints of the text color, so they don't read as solid blocks on glass. */
+html[data-window="glass"][data-theme],
+html[data-window="sidebar"][data-theme] [data-app] > aside {
+  --muted: color-mix(in oklab, var(--foreground) 9%, transparent);
+  --secondary: color-mix(in oklab, var(--foreground) 9%, transparent);
+  --accent: color-mix(in oklab, var(--foreground) 11%, transparent);
+}
+html[data-window] :is([data-slot="select-content"], [data-slot="dropdown-menu-content"], [data-slot="context-menu-content"], [data-slot="popover-content"]) {
+  background: color-mix(in oklab, var(--popover) 82%, transparent);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+}
+html[data-window] .bg-pane-sticky {
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
 }
 
 @utility tabular {

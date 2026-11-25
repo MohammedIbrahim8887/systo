@@ -3,6 +3,27 @@
 All notable changes to Systo. The release workflow publishes each version's section as its
 GitHub release notes, and the website's changelog page renders this file.
 
+## [0.1.10] - 2026-11-25
+
+### Added
+- **Themes.** Settings › Appearance offers 27 color themes beside Systo's own monochrome, from Absolutely and Ayu to Vercel and VS Code Plus. Dark and light each keep their own theme, and System follows your computer. Point at a theme in the list to see it across the app before choosing it.
+- **Make it yours.** Change the accent, background and foreground with a color picker or a hex value, set the interface and code fonts, and raise the contrast. Each color resets on its own, and Systo offers a fix when text gets hard to read.
+- **Translucent windows on macOS,** for the whole window or the sidebar only, with opacity and blur.
+- **Share themes.** Copy a theme as text and import one someone sent you.
+- Charts, meters, the heatmap, the macOS title bar and the Dynamic Island's rings follow the theme.
+
+### Improved
+- Settings has General and Appearance sections.
+- Light and dark mode, and your themes, now stay the same after Systo restarts.
+
+### Fixed
+- Update speed, CPU percentages, heatmap, colored icons, the island's view and dismissed AI logins no longer reset every time Systo starts.
+- The Empty Trash button's text was unreadable in the dark theme.
+
+### Notes
+- Settings were kept somewhere that emptied on every launch, so earlier choices can't be carried over. Set them once more after updating.
+- Translucent windows work on macOS only. Five themes (Lobster, Matrix, Oscurange, Sentry and Temple) are dark only.
+
 ## [0.1.9] - 2026-11-23
 
 ### Added

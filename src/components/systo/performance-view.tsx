@@ -126,7 +126,7 @@ export function PerformanceView({ snapshot }: { snapshot: Snapshot | null }) {
                   active === m.id ? "border-border bg-accent" : "border-transparent hover:bg-accent/50",
                 )}
               >
-                <div className="h-9 w-14 shrink-0 overflow-hidden rounded border bg-background text-foreground">
+                <div className="h-9 w-14 shrink-0 overflow-hidden rounded border bg-background text-data">
                   <AreaChart series={s} max={snapshot ? m.max?.(snapshot) : undefined} capacity={30} strokeWidth={1} />
                 </div>
                 <div className="min-w-0">
@@ -167,7 +167,7 @@ export function PerformanceView({ snapshot }: { snapshot: Snapshot | null }) {
               <span>{def.axis(max)}</span>
               <span>{Math.round((capacity * (snapshot?.interval ?? 1500)) / 1000)} seconds</span>
             </div>
-            <div className="h-56 text-foreground">
+            <div className="h-56 text-data">
               <AreaChart series={series} max={max} capacity={capacity} grid />
             </div>
             <div className="mt-1 flex justify-between text-[10.5px] text-muted-foreground">
@@ -175,10 +175,10 @@ export function PerformanceView({ snapshot }: { snapshot: Snapshot | null }) {
                 {(active === "disk" || active === "network") && (
                   <span className="flex items-center gap-3">
                     <span className="flex items-center gap-1.5">
-                      <span className="h-px w-4 bg-foreground" /> {active === "disk" ? "Read" : "Received"}
+                      <span className="h-px w-4 bg-data" /> {active === "disk" ? "Read" : "Received"}
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <span className="w-4 border-t border-dashed border-foreground/60" /> {active === "disk" ? "Write" : "Sent"}
+                      <span className="w-4 border-t border-dashed border-data/60" /> {active === "disk" ? "Write" : "Sent"}
                     </span>
                   </span>
                 )}
@@ -250,7 +250,7 @@ export function PerformanceView({ snapshot }: { snapshot: Snapshot | null }) {
                           <span className="shrink-0 text-[11px] text-muted-foreground">{KIND_META[g.kind].label}</span>
                         </div>
                         <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
-                          <div className="h-full rounded-full bg-foreground/70 transition-[width] duration-500" style={{ width: `${Math.max(2, (value / peak) * 100)}%` }} />
+                          <div className="h-full rounded-full bg-data/70 transition-[width] duration-500" style={{ width: `${Math.max(2, (value / peak) * 100)}%` }} />
                         </div>
                       </div>
                       <span className="tabular w-20 shrink-0 text-right text-[12px]">{label}</span>

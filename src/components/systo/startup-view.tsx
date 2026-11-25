@@ -70,7 +70,7 @@ function ImpactMeter({ impact }: { impact: StartupItem["impact"] }) {
         <div className="flex items-center gap-2">
           <div className="flex h-3.5 items-end gap-[2px]" aria-hidden>
             {[0, 1, 2].map((i) => (
-              <span key={i} className={cn("w-[3px] rounded-[1px]", i < meta.bars ? "bg-foreground" : "bg-foreground/15")} style={{ height: `${40 + i * 30}%` }} />
+              <span key={i} className={cn("w-[3px] rounded-[1px]", i < meta.bars ? "bg-data" : "bg-data/15")} style={{ height: `${40 + i * 30}%` }} />
             ))}
           </div>
           <span className={cn("text-[12px]", impact === "none" ? "text-muted-foreground" : "")}>{meta.label}</span>
@@ -125,7 +125,7 @@ function Row({
       <div className="flex items-center gap-1.5 text-[12px]">
         {item.running ? (
           <>
-            <span className="size-1.5 rounded-full bg-foreground" />
+            <span className="size-1.5 rounded-full bg-data" />
             <span className="tabular">{formatBytes(item.memory)}</span>
             {item.cpu >= 0.5 && <span className="tabular text-muted-foreground">· {formatPercent(item.cpu, 0)}</span>}
           </>

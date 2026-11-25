@@ -73,7 +73,7 @@ export const Sunburst = memo(function Sunburst({
 
   return (
     <div className="relative mx-auto aspect-square w-full max-w-[440px]">
-      <svg viewBox="-200 -200 400 400" className="block h-full w-full text-foreground" onMouseLeave={() => onHover(null)}>
+      <svg viewBox="-200 -200 400 400" className="block h-full w-full text-data" onMouseLeave={() => onHover(null)}>
         {arcs.map((arc) => {
           const [r0, r1] = RADII[arc.depth];
           const shade = RING_SHADES[arc.depth][arc.index % 2];
@@ -208,14 +208,14 @@ export const Treemap = memo(function Treemap({
             className={cn(
               "absolute overflow-hidden border border-background transition-[background-color] duration-150",
               !isRest && "cursor-pointer",
-              isRest && "bg-[repeating-linear-gradient(135deg,color-mix(in_oklch,var(--foreground)_6%,transparent)_0_4px,transparent_4px_8px)]",
+              isRest && "bg-[repeating-linear-gradient(135deg,color-mix(in_oklch,var(--data)_6%,transparent)_0_4px,transparent_4px_8px)]",
             )}
             style={{
               left: `${(r.x / W) * 100}%`,
               top: `${(r.y / H) * 100}%`,
               width: `${(r.w / W) * 100}%`,
               height: `${(r.h / H) * 100}%`,
-              backgroundColor: isRest ? undefined : `color-mix(in oklch, var(--foreground) ${(active ? 30 : TILE_SHADES[Math.min(i, TILE_SHADES.length - 1)] * 100).toFixed(0)}%, transparent)`,
+              backgroundColor: isRest ? undefined : `color-mix(in oklch, var(--data) ${(active ? 30 : TILE_SHADES[Math.min(i, TILE_SHADES.length - 1)] * 100).toFixed(0)}%, transparent)`,
             }}
             onMouseEnter={() => onHover(child)}
             onClick={() => !isRest && onOpen(child)}
@@ -240,7 +240,7 @@ export const Treemap = memo(function Treemap({
                     top: `${(ir.y / box.h) * 100}%`,
                     width: `${(ir.w / box.w) * 100}%`,
                     height: `${(ir.h / box.h) * 100}%`,
-                    backgroundColor: grand.kind === "rest" ? "transparent" : `color-mix(in oklch, var(--foreground) ${hovered?.path === grand.path ? 34 : 12}%, transparent)`,
+                    backgroundColor: grand.kind === "rest" ? "transparent" : `color-mix(in oklch, var(--data) ${hovered?.path === grand.path ? 34 : 12}%, transparent)`,
                   }}
                   onMouseEnter={(e) => {
                     e.stopPropagation();

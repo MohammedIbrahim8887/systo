@@ -78,6 +78,8 @@ Implementation sources: `installer/index.html`, `installer/main.swift`, and `src
 
 White surfaces, dark text and neutral separators carry the installer. The macOS Applications folder asset is rendered in grayscale, and hover/drop states use pale neutral fills. The application's canonical OKLCH theme variables remain authoritative; installer hex values belong only to that surface.
 
+**Themes are opt-in.** Monochrome Systo is the default and adds no CSS of its own. Other themes (`src/lib/theme-presets.ts`) supply accent, background and foreground; `src/lib/theme.ts` derives every token from them. Use `data` for meters and charts, `heat` for busy cells and `primary` for actions, so components follow any theme. The Dynamic Island stays black and takes only the accent.
+
 **Preserve application identity.** Installer treatments do not replace the existing application light and dark themes.
 
 ## Typography
@@ -113,5 +115,5 @@ Core consists of four rounded quadrants around a central cross-shaped negative s
 - Do preserve the existing application palette, themes, typography, and density.
 - Do use the approved Core asset and Quiet Install composition for the installer.
 - Do retain native window controls, keyboard focus, and honest installation states.
-- Don't introduce a colored accent or extend the installer layout into an application redesign.
+- Don't introduce a colored accent into the default theme, or extend the installer layout into an application redesign.
 - Don't show fabricated installation percentages.

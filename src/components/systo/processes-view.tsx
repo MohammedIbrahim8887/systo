@@ -201,7 +201,7 @@ const ProcessLine = memo(function ProcessLine({
 
 function SectionRow({ section, count, collapsed }: { section: Section; count: number; collapsed: boolean }) {
   return (
-    <div data-section={section} className="flex h-8 cursor-default items-center gap-2 border-b border-border/50 bg-background px-3 pt-2 select-none">
+    <div data-section={section} className="flex h-8 cursor-default items-center gap-2 border-b border-border/50 bg-pane px-3 pt-2 select-none">
       {collapsed ? <ChevronRightIcon className="size-3.5 text-muted-foreground" /> : <ChevronDownIcon className="size-3.5 text-muted-foreground" />}
       <span className="text-[12px] font-semibold">{SECTION_META[section].label}</span>
       <span className="tabular text-[11px] text-muted-foreground">({count})</span>
@@ -626,7 +626,7 @@ export function ProcessesView({ snapshot }: { snapshot: Snapshot | null }) {
             onContextMenu={onContextMenu}
             className="scrollbar-thin relative min-h-0 flex-1 overflow-y-auto outline-none"
           >
-            <div className={cn(GRID, "sticky top-0 z-10 h-[58px] border-b bg-background")}>
+            <div className={cn(GRID, "sticky top-0 z-10 h-[58px] border-b bg-pane-sticky")}>
               <HeaderCell label="Name" sortKey="name" sort={sort} onSort={onSort} align="left" sub={totals ? `${formatCount(visibleGroups)} shown` : undefined} />
               <HeaderCell label="Type" sortKey="kind" sort={sort} onSort={onSort} align="left" />
               <HeaderCell label="CPU" value={totals ? formatPercent(totals.cpu, 0) : "–"} sortKey="cpu" sort={sort} onSort={onSort} />
@@ -684,7 +684,7 @@ export function ProcessesView({ snapshot }: { snapshot: Snapshot | null }) {
           <span>Reading processes…</span>
         )}
         <span className="ml-auto flex items-center gap-1.5">
-          <span className={cn("size-1.5 rounded-full bg-foreground", settings.interval ? "animate-[systo-pulse_2s_ease-in-out_infinite]" : "opacity-30")} />
+          <span className={cn("size-1.5 rounded-full bg-data", settings.interval ? "animate-[systo-pulse_2s_ease-in-out_infinite]" : "opacity-30")} />
           {settings.interval ? `Live · every ${settings.interval / 1000}s` : "Paused"}
         </span>
       </footer>

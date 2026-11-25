@@ -33,6 +33,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useSettings } from "@/lib/client/settings";
 import { usePoll } from "@/lib/client/use-poll";
 import { AI_NAMES, AI_PROVIDERS, type AIAccount, type AIDiscoveredLogin, type AIReport, type AIUsage, type AIWindow } from "@/lib/ai-types";
 import { PROVIDER_LOGIN, accountStatus, folderForAccount, pace, paceText, resetText, tightestWindow, type AccountTone } from "@/lib/ai-display";
@@ -49,7 +50,6 @@ const PERIODS = [
 const compact = (n: number) => new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: n >= 1e6 ? 2 : 1 }).format(n);
 const full = (n: number) => new Intl.NumberFormat().format(n);
 const usd = (n: number) => new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: n > 0 && n < 0.01 ? 4 : 2 }).format(n);
-const DISMISSED_KEY = "systo.ai.dismissedLogins";
 
 function StatusDot({ tone, className }: { tone: AccountTone; className?: string }) {
   return (
@@ -57,8 +57,8 @@ function StatusDot({ tone, className }: { tone: AccountTone; className?: string 
       aria-hidden
       className={cn(
         "inline-block size-1.5 shrink-0 rounded-full",
-        tone === "ok" && "bg-foreground",
-        tone === "attention" && "bg-foreground ring-2 ring-foreground/20 animate-[systo-pulse_2s_ease-in-out_infinite]",
+        tone === "ok" && "bg-data",
+        tone === "attention" && "bg-data ring-2 ring-data/20 animate-[systo-pulse_2s_ease-in-out_infinite]",
         tone === "error" && "border border-foreground bg-transparent",
         tone === "idle" && "bg-muted-foreground/40",
         className,
@@ -99,7 +99,7 @@ function Meter({ window: w }: { window: AIWindow }) {
         <div
           className={cn(
             "h-full rounded-full transition-[width] duration-700 ease-out",
-            critical ? "bg-[repeating-linear-gradient(135deg,var(--foreground)_0_4px,color-mix(in_oklch,var(--foreground)_70%,transparent)_4px_8px)]" : "bg-foreground",
+            critical ? "bg-[repeating-linear-gradient(135deg,var(--data)_0_4px,color-mix(in_oklch,var(--data)_70%,transparent)_4px_8px)]" : "bg-data",
           )}
           style={{ width: `${left ?? 0}%` }}
         />
@@ -437,19 +437,12 @@ export function AIUsageView() {
   const [removing, setRemoving] = useState<AIAccount | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [connecting, setConnecting] = useState(false);
-  const [dismissed, setDismissed] = useState<string[]>([]);
+  const { settings, update } = useSettings();
+  const dismissed = settings.dismissedLogins;
   const [pollMs, setPollMs] = useState(1000);
   const { data, error, refresh } = usePoll<AIReport>(`/api/ai-usage?days=${days}`, pollMs);
   useEffect(() => { if (data) setPollMs(data.pending ? 1000 : 60000); }, [data?.pending]);
 
-  useEffect(() => {
-    try {
-      const stored: unknown = JSON.parse(localStorage.getItem(DISMISSED_KEY) || "[]");
-      if (Array.isArray(stored)) setDismissed(stored.filter((id): id is string => typeof id === "string"));
-    } catch {
-      /* ignore */
-    }
-  }, []);
   useEffect(() => {
     if (!data) return;
     setLoadedDays(days);
@@ -491,9 +484,7 @@ export function AIUsageView() {
     }
   }
   function dismiss(login: AIDiscoveredLogin) {
-    const next = [...dismissed, login.id];
-    setDismissed(next);
-    localStorage.setItem(DISMISSED_KEY, JSON.stringify(next));
+    update({ dismissedLogins: [...dismissed, login.id] });
   }
 
   return (

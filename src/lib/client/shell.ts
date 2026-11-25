@@ -11,6 +11,8 @@ export interface ShellState {
   /** False where the shell has no island to draw (Linux). */
   islandSupported: boolean;
   notch: boolean;
+  /** Whether the shell can make the main window see-through. */
+  translucency?: boolean;
   /** Pushed by the shell whenever the updater changes state (see shell/updater.ts). */
   update?: UpdateState;
 }
@@ -25,6 +27,7 @@ export type ShellCommand =
   | { type: "drag-island"; dx: number; dy: number; done: boolean }
   | { type: "island"; enabled: boolean }
   | { type: "island-metric"; metric: Metric }
+  | { type: "window-theme"; variant: "dark" | "light"; background: string; opacity: number; blur: number }
   | { type: "open-main" }
   | { type: "collapse-island" };
 

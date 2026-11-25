@@ -33,7 +33,7 @@ export function IslandAI({ report, error }: { report: AIReport | null; error: st
                         <span className="shrink-0 tabular text-white">{remaining === undefined ? "Not reported" : `${Math.round(remaining)}% left`}</span>
                       </div>
                       <div className="mt-1 h-1 rounded-full bg-white/15" role="progressbar" aria-label={`${usage.account.label} ${w.label} remaining`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={remaining}>
-                        <div className="h-full rounded-full bg-white/85" style={{ width: `${remaining ?? 0}%` }} />
+                        <div className="h-full rounded-full bg-[color-mix(in_oklab,var(--island-tint)_85%,transparent)]" style={{ width: `${remaining ?? 0}%` }} />
                       </div>
                     </div>;
                   })}

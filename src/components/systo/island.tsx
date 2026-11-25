@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRightIcon, CpuIcon, HardDriveIcon, MemoryStickIcon, WifiIcon, type LucideIcon } from "lucide-react";
 import { usePoll } from "@/lib/client/use-poll";
 import { createIslandDragHandlers } from "@/lib/client/island-drag";
+import { bootSettings, saveSettings } from "@/lib/client/settings";
 import { sendShellCommand } from "@/lib/client/shell";
 import { formatBytes, formatRate } from "@/lib/format";
 import { METRIC_META } from "@/lib/kinds";
@@ -29,8 +30,6 @@ const METRICS: Array<{ id: Metric; icon: LucideIcon }> = [
   { id: "network", icon: WifiIcon },
 ];
 
-const METRIC_KEY = "systo:island-metric";
-
 /** Expanded panel height below the notch; keep in sync with PANEL_EXTRA_HEIGHT in shell/island.ts. */
 const ISLAND_PANEL_HEIGHT = 262;
 
@@ -49,7 +48,7 @@ function Ring({ value, size, stroke, children }: { value: number; size: number; 
           cy={size / 2}
           r={r}
           fill="none"
-          stroke="currentColor"
+          stroke="var(--island-tint, currentColor)"
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={c}
@@ -129,18 +128,11 @@ export function Island({ params = {} }: { params?: IslandParams }) {
   const [metric, setMetric] = useState<Metric>("cpu");
   const [showAI, setShowAI] = useState(false);
   const [aiPollMs, setAiPollMs] = useState(1000);
-  const [colorIcons, setColorIcons] = useState(false);
 
   useEffect(() => {
-    try {
-      setShowAI(localStorage.getItem("systo:island-ai") === "true");
-      const saved = localStorage.getItem(METRIC_KEY) as Metric | null;
-      if (saved && METRICS.some((m) => m.id === saved)) setMetric(saved);
-      const settings = JSON.parse(localStorage.getItem("systo:settings") ?? "{}") as { colorIcons?: boolean };
-      setColorIcons(Boolean(settings.colorIcons));
-    } catch {
-      // defaults
-    }
+    const saved = bootSettings();
+    setShowAI(saved.islandAI);
+    setMetric(saved.islandMetric);
     const sync = () => setExpanded(Boolean(window.__systoIsland?.expanded));
     sync();
     window.addEventListener("systo:island", sync);
@@ -149,15 +141,12 @@ export function Island({ params = {} }: { params?: IslandParams }) {
 
   const chooseMetric = (next: Metric) => {
     setMetric(next);
-    try {
-      localStorage.setItem(METRIC_KEY, next);
-    } catch {
-      // storage unavailable
-    }
+    void saveSettings({ islandMetric: next }).catch(() => {});
   };
 
   // Collapsed, the pill shows one number; a slower poll is plenty and lets the sampler idle down.
   const { data } = usePoll<IslandData>(`/api/island?metric=${metric}`, expanded ? 1000 : 3000, false, { whenHidden: true });
+  const colorIcons = Boolean(data?.colorIcons);
 
   const { data: ai, error: aiError } = usePoll<AIReport>(showAI ? "/api/ai-usage?days=30" : null, aiPollMs, false, { whenHidden: true });
   useEffect(() => { if (ai) setAiPollMs(ai.pending ? 1000 : 60000); }, [ai?.pending]);
@@ -165,7 +154,7 @@ export function Island({ params = {} }: { params?: IslandParams }) {
   const aiLabel = closest ? `${Math.round(100 - closest.window.usedPercent!)}%` : ai?.pending ? "…" : "—";
   const toggleAI = (value: boolean) => {
     setShowAI(value);
-    try { localStorage.setItem("systo:island-ai", String(value)); } catch { /* storage unavailable */ }
+    void saveSettings({ islandAI: value }).catch(() => {});
   };
 
   // The panel only exists while open (plus its fade-out), so a collapsed island isn't re-rendering
@@ -211,6 +200,9 @@ export function Island({ params = {} }: { params?: IslandParams }) {
           width: expanded ? expandedWidth : collapsedWidth,
           height: expanded ? expandedHeight : notchHeight,
           background: "#000",
+          // Always black, whatever the theme: the logo cuts its gaps in --background.
+          ["--background" as string]: "#000",
+          ["--island-tint" as string]: data?.tint ?? "#fff",
           borderRadius: geometry.floating
             ? expanded
               ? "28px"
@@ -339,7 +331,7 @@ export function Island({ params = {} }: { params?: IslandParams }) {
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[12.5px] leading-tight text-white/95">{entry.name}</div>
                   <div className="mt-1 h-[3px] overflow-hidden rounded-full bg-white/10">
-                    <div className="h-full rounded-full bg-white/80 transition-[width] duration-700 ease-out" style={{ width: `${Math.max(3, entry.share * 100)}%` }} />
+                    <div className="h-full rounded-full bg-[color-mix(in_oklab,var(--island-tint)_80%,transparent)] transition-[width] duration-700 ease-out" style={{ width: `${Math.max(3, entry.share * 100)}%` }} />
                   </div>
                 </div>
                 <span className="w-[72px] shrink-0 text-right text-[12px] tabular text-white/90">{formatValue(metric, entry.value, cores)}</span>

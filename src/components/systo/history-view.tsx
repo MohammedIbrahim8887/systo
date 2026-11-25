@@ -149,7 +149,7 @@ function StackedBars({
         <span className="tabular">{formatPoint(report.metric, max)}</span>
         <span>{report.metric === "cpu" ? "Share of the whole chip" : report.metric === "memory" ? "Average in use" : report.metric === "energy" ? "Average power" : "Per interval"}</span>
       </div>
-      <div ref={ref} className="relative h-56 cursor-crosshair text-foreground" onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+      <div ref={ref} className="relative h-56 cursor-crosshair text-data" onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="block h-full w-full">
           {[0.25, 0.5, 0.75].map((f) => (
             <line key={f} x1={0} x2={W} y1={H * f} y2={H * f} stroke="currentColor" strokeOpacity={0.07} vectorEffect="non-scaling-stroke" />
@@ -210,7 +210,7 @@ function StackedBars({
               if (value <= 0) return null;
               return (
                 <div key={e.id} className="flex items-center gap-2 py-0.5">
-                  <span className="size-2 shrink-0 rounded-[2px] bg-foreground" style={{ opacity: SHADES[layer] }} />
+                  <span className="size-2 shrink-0 rounded-[2px] bg-data" style={{ opacity: SHADES[layer] }} />
                   <span className="min-w-0 flex-1 truncate">{e.name}</span>
                   <span className="tabular text-muted-foreground">{formatPoint(report.metric, value)}</span>
                 </div>
@@ -218,7 +218,7 @@ function StackedBars({
             })}
             {hovered.others.y1 - hovered.others.y0 > 0 && (
               <div className="flex items-center gap-2 py-0.5 text-muted-foreground">
-                <span className="size-2 shrink-0 rounded-[2px] bg-foreground" style={{ opacity: OTHERS_SHADE * 2 }} />
+                <span className="size-2 shrink-0 rounded-[2px] bg-data" style={{ opacity: OTHERS_SHADE * 2 }} />
                 <span className="flex-1">Everything else</span>
                 <span className="tabular">{formatPoint(report.metric, hovered.others.y1 - hovered.others.y0)}</span>
               </div>
@@ -253,12 +253,12 @@ function StackedBars({
             onMouseLeave={() => onHighlight(null)}
             className={cn("flex items-center gap-1.5 transition-opacity", highlight && highlight !== e.id && "opacity-40")}
           >
-            <span className="size-2 rounded-[2px] bg-foreground" style={{ opacity: SHADES[layer] }} />
+            <span className="size-2 rounded-[2px] bg-data" style={{ opacity: SHADES[layer] }} />
             <span className="max-w-36 truncate">{e.name}</span>
           </button>
         ))}
         <span className="flex items-center gap-1.5">
-          <span className="size-2 rounded-[2px] bg-foreground" style={{ opacity: OTHERS_SHADE * 2 }} />
+          <span className="size-2 rounded-[2px] bg-data" style={{ opacity: OTHERS_SHADE * 2 }} />
           Everything else
         </span>
       </div>
@@ -297,12 +297,12 @@ function Leaderboard({
             </div>
             <div className="mt-1.5 flex items-center gap-2">
               <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
-                <div className="h-full rounded-full bg-foreground/75 transition-[width] duration-500" style={{ width: `${Math.max(1.5, (e.total / peak) * 100)}%` }} />
+                <div className="h-full rounded-full bg-data/75 transition-[width] duration-500" style={{ width: `${Math.max(1.5, (e.total / peak) * 100)}%` }} />
               </div>
               <span className="tabular w-10 shrink-0 text-right text-[10.5px] text-muted-foreground">{formatPercent(e.share * 100, 0)}</span>
             </div>
           </div>
-          <div className="hidden h-7 w-28 shrink-0 text-foreground/70 md:block">
+          <div className="hidden h-7 w-28 shrink-0 text-data/70 md:block">
             <AreaChart series={[{ values: e.series }]} capacity={e.series.length} strokeWidth={1} />
           </div>
           <div className="w-24 shrink-0 text-right">

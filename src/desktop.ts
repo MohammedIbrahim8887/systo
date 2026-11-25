@@ -7,11 +7,14 @@ import Electrobun, { BrowserWindow, Tray, Utils } from "electrobun/main";
 import { hyprlandAvailable } from "./lib/server/linux/hyprland";
 import { IslandController } from "./shell/island";
 import { LinuxIslandController } from "./shell/island-linux";
+import { paintWindow } from "./shell/objc";
 import { WinIslandController } from "./shell/island-win";
 import { TRAY_ICON_PNG, TRAY_ICON_PNG_WINDOWS } from "./shell/tray-icon";
 import { AppUpdater } from "./shell/updater";
 import { HotkeyHost } from "./shell/hotkeys";
 import { initializeAutostart } from "./lib/server/autostart";
+import { hexToRgb, normalizeHex } from "./lib/color";
+import { loadAppearance } from "./lib/server/appearance";
 import type { UpdateState } from "./lib/update-types";
 
 const IS_WINDOWS = process.platform === "win32";
@@ -99,12 +102,29 @@ export default defineDesktop<BrowserWindow>({
     let main: BrowserWindow | null = window;
     let tray: Tray | null = null;
 
-    const shellState = () => ({ desktop: true, island: island.active, islandSupported: ISLAND_SUPPORTED, notch: island.notch, update: updater.state });
+    const shellState = () => ({ desktop: true, island: island.active, islandSupported: ISLAND_SUPPORTED, notch: island.notch, translucency: IS_MAC, update: updater.state });
 
     const pushShellState = (target: BrowserWindow | null) => {
       target?.webview.executeJavascript(
         `window.__systoShell=${JSON.stringify(shellState())};window.dispatchEvent(new Event("systo:shell"));`,
       );
+    };
+
+    /** The window's own chrome, which the page can't reach. The page says what it's showing. */
+    const paintMain = (theme: { variant: "dark" | "light"; background: string; opacity: number; blur: number }) => {
+      const background = normalizeHex(theme.background);
+      if (!IS_MAC || !main || !background || !Number.isFinite(theme.opacity) || !Number.isFinite(theme.blur)) return;
+      const [r, g, b] = hexToRgb(background).map((v) => v / 255);
+      try {
+        paintWindow(main.ptr as number, {
+          dark: theme.variant !== "light",
+          color: [r, g, b],
+          opacity: Math.max(0.3, Math.min(1, theme.opacity / 100)),
+          blur: Math.max(0, Math.min(64, Math.round(theme.blur))),
+        });
+      } catch (error) {
+        console.error("[systo] couldn't paint the window", error);
+      }
     };
 
     const handle = (url: string) => {
@@ -114,11 +134,19 @@ export default defineDesktop<BrowserWindow>({
         if (Number.isFinite(command.dx) && Number.isFinite(command.dy) && typeof command.done === "boolean") {
           island.drag?.(command.dx, command.dy, command.done);
         }
-      } else if (command.type === "island") setIsland(command.enabled);
+      } else if (command.type === "window-theme") paintMain(command);
+      else if (command.type === "island") setIsland(command.enabled);
       else if (command.type === "open-main") {
         island.collapse();
         openMain();
       } else if (command.type === "collapse-island") island.collapse();
+    };
+
+    /** Before the page has loaded: the saved theme's title bar, so it doesn't flash the system color. */
+    const paintSaved = () => {
+      const saved = loadAppearance();
+      if (saved.mode === "system") return;
+      paintMain({ variant: saved.mode, background: saved[saved.mode].background, opacity: 100, blur: 0 });
     };
 
     const updater = new AppUpdater(
@@ -179,6 +207,7 @@ export default defineDesktop<BrowserWindow>({
       created.webview.setNavigationRules(["^*", `${server.origin}/*`]);
       wireMain(created);
       main = created;
+      paintSaved();
     };
 
     const updateTray = () => {
@@ -211,6 +240,7 @@ export default defineDesktop<BrowserWindow>({
     };
 
     wireMain(window);
+    paintSaved();
     pushShellState(window);
 
     // System-wide shortcuts. /api/hotkeys edits them and reaches the host through the shared process.
