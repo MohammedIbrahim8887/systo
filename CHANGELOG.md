@@ -3,6 +3,11 @@
 All notable changes to Systo. The release workflow publishes each version's section as its
 GitHub release notes, and the website's changelog page renders this file.
 
+## [0.1.11] - 2026-11-28
+
+### Fixed
+- On macOS, reopening Systo from the Dock or menu bar after closing the main window could show a Forbidden page when the Dynamic Island was disabled. Closing the window now keeps its session active so it reopens normally.
+
 ## [0.1.10] - 2026-11-25
 
 ### Added

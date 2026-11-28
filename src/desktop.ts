@@ -186,6 +186,14 @@ export default defineDesktop<BrowserWindow>({
         const detail = event.data?.detail;
         if (typeof detail === "string") handle(detail);
       });
+      if (IS_MAC) {
+        // WebKit drops the desktop session cookie when the last webview closes.
+        // Keep the main webview alive for Dock and tray reopens while Systo is running.
+        target.on("will-close", (event) => {
+          event.response = { allow: false };
+          target.hide();
+        });
+      }
       target.on("close", () => {
         if (main === target) main = null;
       });

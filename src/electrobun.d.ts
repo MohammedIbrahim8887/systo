@@ -56,6 +56,7 @@ declare module "electrobun/main" {
     setAlwaysOnTop(value: boolean): void;
     setVisibleOnAllWorkspaces(value: boolean): void;
     setFrame(x: number, y: number, width: number, height: number): void;
+    on(name: "will-close", handler: (event: { response?: { allow: boolean } }) => void): void;
     on(name: "close" | "focus" | "blur" | "resize" | "move", handler: (event: unknown) => void): void;
   }
 
